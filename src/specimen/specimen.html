@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PageAgent — design tokens specimen</title>
+    <link rel="stylesheet" href="../styles/tokens.css" />
+    <style>
+      /* Specimen-only layout (standalone doc — not part of the extension). */
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        padding: var(--pa-space-5);
+      }
+      h1 {
+        font-size: 22px;
+      }
+      h2 {
+        font-size: 15px;
+        margin: var(--pa-space-5) 0 var(--pa-space-3);
+        color: var(--muted);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--pa-space-3);
+      }
+      .swatch {
+        width: 132px;
+        border: 1px solid var(--line);
+        border-radius: var(--pa-radius);
+        overflow: hidden;
+        font-size: 11px;
+      }
+      .chip {
+        height: 56px;
+      }
+      .swatch .meta {
+        padding: 6px 8px;
+        background: var(--surface);
+      }
+      .swatch .meta b {
+        color: var(--ink);
+      }
+      .swatch .meta span {
+        color: var(--muted);
+      }
+      .job {
+        border-left: 3px solid var(--line);
+        padding-left: var(--pa-space-4);
+        margin-bottom: var(--pa-space-4);
+      }
+      .toolbar {
+        display: flex;
+        gap: var(--pa-space-2);
+        align-items: center;
+        margin-bottom: var(--pa-space-4);
+      }
+      button {
+        font: inherit;
+        background: var(--surface);
+        color: var(--ink);
+        border: 1px solid var(--line);
+        border-radius: var(--pa-radius);
+        padding: 8px 12px;
+        min-height: 44px;
+        cursor: pointer;
+      }
+      .node {
+        width: 18px;
+        height: 18px;
+        border-radius: 5px;
+        border: 1.5px solid var(--brand-dim);
+        display: inline-grid;
+        place-items: center;
+      }
+      .node i {
+        width: 7px;
+        height: 7px;
+        border-radius: 2px;
+        background: var(--brand);
+        display: block;
+      }
+      .offshore {
+        border: 1.5px dashed var(--offshore);
+        color: var(--offshore);
+        border-radius: var(--pa-radius);
+        padding: 6px 10px;
+        display: inline-block;
+      }
+      .mono {
+        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        background: var(--filament-tint);
+        color: var(--filament);
+        border-radius: var(--pa-radius-sm);
+        padding: 2px 6px;
+      }
+      .box {
+        width: 60px;
+        height: 40px;
+        background: var(--brand);
+        border-radius: var(--pa-radius);
+      }
+      .actuate:active {
+        transform: scale(0.97);
+        transition: transform var(--pa-dur-actuation) var(--pa-ease-firm);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar">
+      <h1 style="flex: 1; margin: 0">PageAgent — tokens</h1>
+      <button id="theme">Toggle theme</button>
+    </div>
+    <p style="color: var(--muted); max-width: 60ch">
+      Living specimen for the "Local Instrument" token layer (<code>src/styles/tokens.css</code>).
+      Three separate color jobs, spacing, radius, and motion — both themes.
+    </p>
+
+    <div class="job">
+      <h2>Job 1 — Brand (Halide, identity/signal only — never success/safe)</h2>
+      <div class="row" id="brand"></div>
+    </div>
+    <div class="job">
+      <h2>Job 2 — Safety trio (meaning also in words)</h2>
+      <div class="row" id="safety"></div>
+    </div>
+    <div class="job">
+      <h2>Job 3 — Processing-locus (on-device vs. leaves-device)</h2>
+      <div class="row" style="align-items: center; gap: var(--pa-space-4)">
+        <span
+          ><span class="node"><i></i></span> On your device</span
+        >
+        <span class="offshore">⇥ leaves your device (Offshore)</span>
+      </div>
+    </div>
+
+    <h2>Neutrals</h2>
+    <div class="row" id="neutrals"></div>
+
+    <h2>Type</h2>
+    <div style="font-size: 18px; font-weight: 700">
+      Display / Hanken Grotesk (falls back until #21)
+    </div>
+    <div>Body / IBM Plex Sans — the quick brown fox jumps over the lazy dog.</div>
+    <div>Tool identifier: <span class="mono">click_rerun_failed_jobs</span></div>
+
+    <h2>Spacing &amp; radius</h2>
+    <div class="row" style="align-items: flex-end">
+      <div class="box" style="width: var(--pa-space-1); height: var(--pa-space-4)"></div>
+      <div class="box" style="width: var(--pa-space-2); height: var(--pa-space-4)"></div>
+      <div class="box" style="width: var(--pa-space-4); height: var(--pa-space-4)"></div>
+      <div class="box" style="width: var(--pa-space-6); height: var(--pa-space-4)"></div>
+      <div class="box" style="border-radius: var(--pa-radius-pill)"></div>
+    </div>
+
+    <h2>Motion</h2>
+    <button class="actuate">Press me — actuation (respects reduced-motion)</button>
+
+    <script>
+      const NEUTRALS = ['bg', 'surface', 'surface-2', 'ink', 'muted', 'line'];
+      const BRAND = ['brand', 'brand-ink', 'brand-dim', 'focus'];
+      const SAFETY = ['safe', 'safe-tint', 'caution', 'caution-tint', 'halt', 'halt-tint'];
+      function swatch(name) {
+        const v = getComputedStyle(document.documentElement)
+          .getPropertyValue('--' + name)
+          .trim();
+        return `<div class="swatch"><div class="chip" style="background:var(--${name})"></div><div class="meta"><b>--${name}</b><br><span>${v || '—'}</span></div></div>`;
+      }
+      function paint() {
+        document.getElementById('neutrals').innerHTML = NEUTRALS.map(swatch).join('');
+        document.getElementById('brand').innerHTML = BRAND.map(swatch).join('');
+        document.getElementById('safety').innerHTML = SAFETY.map(swatch).join('');
+      }
+      document.getElementById('theme').addEventListener('click', () => {
+        const r = document.documentElement;
+        r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+        paint();
+      });
+      paint();
+    </script>
+  </body>
+</html>

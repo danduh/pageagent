@@ -22,3 +22,5 @@ jobs:
       # violation fails this step (the a11y gate). See src/sidepanel/App.test.tsx.
       - run: npm run test
       - run: npm run build
+      # Fails on any REQUIRED WCAG contrast regression in the design tokens (Step 2.5).
+      - run: npm run check:contrast
