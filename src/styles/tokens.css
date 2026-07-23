@@ -1,0 +1,200 @@
+/* PageAgent design tokens — "Local Instrument".
+ *
+ * Two tiers: raw primitives (--pa-*) → semantic aliases (--bg, --brand, …).
+ * Components reference ONLY semantic aliases; raw hexes never leak past this file.
+ * Dark-first (the product's resting look); light via prefers-color-scheme, with an
+ * explicit data-theme override winning BOTH directions. Values trued to
+ * docs/design/PageAgent.dc.html (Phase 2, Steps 2.1–2.4 / 2.8 / 2.9 / 2.11).
+ *
+ * Three separate color JOBS — never blurred:
+ *   1. brand (Halide teal)  — identity/signal only; never success/safe.
+ *   2. safety trio          — Safe / Caution / Halt (+ tints); meaning also carried in words.
+ *   3. processing-locus     — on-device instrumentation vs. Offshore (leaves-device).
+ */
+
+:root {
+  /* ---- raw primitives (theme-agnostic) ------------------------------------ */
+  /* Graphite-Verdigris neutrals — dark ramp */
+  --pa-graphite-950: #0b1614;
+  --pa-graphite-900: #0e1b18;
+  --pa-graphite-850: #12211e;
+  --pa-graphite-700: #26403a;
+  --pa-graphite-400: #8ca59f;
+  --pa-graphite-100: #e7f0ed;
+  /* neutrals — light ramp (Mist / Paper / Substrate) */
+  --pa-mist-100: #e9efed;
+  --pa-mist-200: #eef4f2;
+  --pa-paper-50: #f8fbfa;
+  --pa-substrate-950: #0d1a18;
+  --pa-graphite-500: #47605a;
+  --pa-hairline-200: #cbd8d4;
+
+  /* Halide teal (brand) */
+  --pa-halide-500: #33cfbd; /* dark brand + dark small-text (clears 7:1 on dark surfaces) */
+  --pa-halide-600: #1e9c90; /* dark brand dim */
+  --pa-halide-700: #0f9c8e; /* light brand (fills/large only) */
+  --pa-halide-800: #0a756b; /* light brand-ink (small text/links, 7:1) */
+
+  /* Safety trio */
+  --pa-verdant-500: #46c07e;
+  --pa-verdant-700: #1e874a;
+  --pa-amber-500: #e4a63a;
+  --pa-amber-700: #b5730a;
+  --pa-halt-500: #e5645a;
+  --pa-halt-700: #b03a2e;
+
+  /* Warm secondary — Filament (Tools surface / mono token backdrops) */
+  --pa-filament-dark: #cba870;
+  --pa-filament-light: #9c7e4e;
+
+  /* Processing-locus — Offshore (leaves-device) */
+  --pa-offshore-dark: #7b99b8;
+  --pa-offshore-light: #4e6e8c;
+
+  /* ---- spacing / radius / elevation / z (theme-agnostic) ------------------ */
+  --pa-space-1: 4px;
+  --pa-space-2: 8px;
+  --pa-space-3: 12px;
+  --pa-space-4: 16px;
+  --pa-space-5: 24px;
+  --pa-space-6: 32px;
+
+  --pa-radius-sm: 4px;
+  --pa-radius: 6px; /* modest — NOT blanket rounded-lg */
+  --pa-radius-pill: 999px;
+
+  /* Flat-instrument elevation — restrained, not a material stack */
+  --pa-elev-1: 0 1px 2px rgba(0, 0, 0, 0.25);
+
+  --pa-z-base: 0;
+  --pa-z-banner: 10;
+  --pa-z-gate: 1000; /* focus-trapped Confirm-gate reserves the top layer */
+
+  /* ---- motion ------------------------------------------------------------- */
+  --pa-dur-fast: 120ms;
+  --pa-dur-actuation: 150ms; /* execute "actuation" — firm, no bounce */
+  --pa-dur-slow: 260ms;
+  --pa-ease: cubic-bezier(0.2, 0, 0, 1);
+  --pa-ease-firm: cubic-bezier(0.3, 0, 0.2, 1);
+
+  /* ---- focus -------------------------------------------------------------- */
+  --pa-focus-width: 2px;
+}
+
+/* ---- semantic aliases: DARK (default / dark-first) ------------------------ */
+:root {
+  color-scheme: dark;
+
+  --bg: var(--pa-graphite-950);
+  --surface: var(--pa-graphite-850);
+  --surface-2: var(--pa-graphite-900);
+  --ink: var(--pa-graphite-100);
+  --muted: var(--pa-graphite-400);
+  --line: var(--pa-graphite-700);
+
+  --brand: var(--pa-halide-500);
+  --brand-ink: var(--pa-halide-500); /* dark: doubles as small-text/link (≥7:1) */
+  --brand-dim: var(--pa-halide-600);
+
+  --safe: var(--pa-verdant-500);
+  --safe-tint: #10261b;
+  --caution: var(--pa-amber-500);
+  --caution-tint: #2a2110;
+  --halt: var(--pa-halt-500);
+  --halt-tint: #2e1512;
+
+  --filament: var(--pa-filament-dark);
+  --filament-tint: #241e14;
+
+  --offshore: var(--pa-offshore-dark);
+  --offshore-tint: #101a24;
+
+  --focus: var(--pa-halide-500);
+}
+
+/* light values, applied when the OS prefers light and dark isn't forced */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme='dark']) {
+    color-scheme: light;
+
+    --bg: var(--pa-mist-100);
+    --surface: var(--pa-paper-50);
+    --surface-2: var(--pa-mist-200);
+    --ink: var(--pa-substrate-950);
+    --muted: var(--pa-graphite-500);
+    --line: var(--pa-hairline-200);
+
+    --brand: var(--pa-halide-700);
+    --brand-ink: var(--pa-halide-800); /* light: small text/links use the darker ink (7:1) */
+    --brand-dim: var(--pa-halide-800);
+
+    --safe: var(--pa-verdant-700);
+    --safe-tint: #dcefe3;
+    --caution: var(--pa-amber-700);
+    --caution-tint: #f6ecd6;
+    --halt: var(--pa-halt-700);
+    --halt-tint: #f6deda;
+
+    --filament: var(--pa-filament-light);
+    --filament-tint: #ece3cf;
+
+    --offshore: var(--pa-offshore-light);
+    --offshore-tint: #dce6f0;
+
+    --focus: var(--pa-halide-800); /* darker Halide clears ≥3:1 focus ring on light bg (2.4.11) */
+  }
+}
+
+/* explicit light override wins regardless of OS preference */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: var(--pa-mist-100);
+  --surface: var(--pa-paper-50);
+  --surface-2: var(--pa-mist-200);
+  --ink: var(--pa-substrate-950);
+  --muted: var(--pa-graphite-500);
+  --line: var(--pa-hairline-200);
+
+  --brand: var(--pa-halide-700);
+  --brand-ink: var(--pa-halide-800);
+  --brand-dim: var(--pa-halide-800);
+
+  --safe: var(--pa-verdant-700);
+  --safe-tint: #dcefe3;
+  --caution: var(--pa-amber-700);
+  --caution-tint: #f6ecd6;
+  --halt: var(--pa-halt-700);
+  --halt-tint: #f6deda;
+
+  --filament: var(--pa-filament-light);
+  --filament-tint: #ece3cf;
+
+  --offshore: var(--pa-offshore-light);
+  --offshore-tint: #dce6f0;
+
+  --focus: var(--pa-halide-800); /* darker Halide clears ≥3:1 focus ring on light bg (2.4.11) */
+}
+
+/* Shared focus-visible + reduced-motion primitives. */
+:focus-visible {
+  outline: var(--pa-focus-width) solid var(--focus);
+  outline-offset: 2px;
+  border-radius: var(--pa-radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --line: var(--pa-graphite-400);
+  }
+}

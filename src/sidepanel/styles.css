@@ -1,37 +1,7 @@
-/* PageAgent side panel — Phase 1. Provisional-from-design values (see
-   docs/design/PageAgent.dc.html); the tokenized design system + inlined fonts
-   land in Phase 2. System font stack for now — no external/CDN fonts. */
-
-:root,
-:root[data-theme='dark'] {
-  --bg: #0b1614;
-  --surface: #12211e;
-  --surface-2: #0e1b19;
-  --ink: #e7f0ed;
-  --muted: #8ca59f;
-  --line: #26403a;
-  --brand: #33cfbd;
-  --brand-dim: #1e9c90;
-  --focus: #33cfbd;
-  --verdant: #46c07e;
-  --amber: #e4a63a;
-  --halt: #e5645a;
-}
-
-:root[data-theme='light'] {
-  --bg: #e9efed;
-  --surface: #f8fbfa;
-  --surface-2: #eef4f2;
-  --ink: #0d1a18;
-  --muted: #47605a;
-  --line: #cbd8d4;
-  --brand: #0f9c8e;
-  --brand-dim: #0a756b;
-  --focus: #0f9c8e;
-  --verdant: #1e874a;
-  --amber: #b5730a;
-  --halt: #b03a2e;
-}
+/* PageAgent side panel — component styles. All color / focus / motion primitives
+   come from the semantic tokens in ../styles/tokens.css (imported first in main.tsx);
+   this file references only those aliases. System font stack for now — the inlined
+   type system lands in Phase 2 (#21). */
 
 * {
   box-sizing: border-box;
@@ -56,11 +26,6 @@ body {
   min-height: 100vh;
 }
 
-:focus-visible {
-  outline: 2px solid var(--focus);
-  outline-offset: 2px;
-  border-radius: 4px;
-}
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -140,11 +105,11 @@ body {
   background: var(--muted);
 }
 .pa-dot--available {
-  background: var(--verdant);
+  background: var(--safe);
 }
 .pa-dot--downloadable,
 .pa-dot--downloading {
-  background: var(--amber);
+  background: var(--caution);
 }
 .pa-dot--unavailable {
   background: var(--halt);
@@ -273,11 +238,4 @@ body {
   min-height: 16px;
   font-size: 12px;
   color: var(--muted);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation: none !important;
-    transition: none !important;
-  }
 }
