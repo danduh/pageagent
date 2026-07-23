@@ -33,7 +33,7 @@ function cx(...parts: Array<string | false | null | undefined>): string {
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   /** Visual role. `destructive` styles with --halt and expects a caller-supplied
    *  label (the verb/amount restatement) — there is NO built-in OK/Confirm text. */
-  variant?: 'primary' | 'ghost' | 'destructive';
+  variant?: 'primary' | 'ghost' | 'destructive' | 'firm';
 }
 
 export function Button({ variant = 'primary', type, className, children, ...rest }: ButtonProps) {

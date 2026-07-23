@@ -89,6 +89,14 @@
   border-color: var(--halt);
 }
 
+/* Firm: a neutral, high-commitment action (e.g. a Tier-1 Confirm-gate proceed) —
+ * weightier than ghost, but NOT the halt signal (reserved for Tier 2). */
+.pak-btn--firm {
+  background: var(--surface-2);
+  color: var(--ink);
+  border-color: var(--muted);
+}
+
 /* ==========================================================================
  * Toggle / switch
  * ======================================================================== */

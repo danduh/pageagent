@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createStubEngine } from '../engine/stub';
 import type { Turn } from '../engine/port';
-import type { FreshnessState, LocusState, PageInfo, Tool } from '../engine/types';
+import type { FreshnessState, GatePreview, LocusState, PageInfo, Tool } from '../engine/types';
 import type { CapabilityState } from '../lib/capabilities';
 import { Button, Tab, Tabs, Toggle } from '../components/primitives';
 import { Header } from '../surfaces/Header';
 import { Chat } from '../surfaces/Chat';
+import { ConfirmGate } from '../surfaces/ConfirmGate';
+import { buildGatePreview, classifyTier } from '../safety/classifier';
 import { DENSE_TOOLS, PAGES, SPARSE_TOOLS } from '../fixtures';
 
 type SurfaceTab = 'chat' | 'tools' | 'scan';
@@ -28,6 +30,7 @@ export function App() {
   const [status, setStatus] = useState('');
   const [freshness, setFreshness] = useState<FreshnessState>('fresh');
   const [locus, setLocus] = useState<LocusState>('on-device');
+  const [pendingGate, setPendingGate] = useState<GatePreview | null>(null);
   const [, setCapability] = useState<CapabilityState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -58,9 +61,17 @@ export function App() {
   const send = useCallback(
     (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || acting) return;
+      if (!trimmed || acting || pendingGate) return;
       setTab('chat');
       setTurns((prev) => [...prev, { id: `u-${prev.length}`, kind: 'user', text: trimmed }]);
+
+      // Reversibility ladder: Tier 1/2 route to the Confirm-gate; Tier 0 flows.
+      const tier = classifyTier(trimmed);
+      if (tier === 1 || tier === 2) {
+        setPendingGate(buildGatePreview(trimmed, tier));
+        return;
+      }
+
       const controller = new AbortController();
       abortRef.current = controller;
       setActing(true);
@@ -80,7 +91,7 @@ export function App() {
         }
       })();
     },
-    [acting, engine]
+    [acting, engine, pendingGate]
   );
 
   const rescan = useCallback(() => {
@@ -105,14 +116,48 @@ export function App() {
 
   const choice = useCallback((picked: string) => send(picked), [send]);
 
-  // Escape stops the loop from anywhere (interruptibility).
+  // Approve resolves the gate → an observed-result report. Destructive actions carry
+  // no one-tap reverse (they're not reversible — that's why they gated).
+  const approveGate = useCallback(() => {
+    setPendingGate((g) => {
+      if (g) {
+        setTurns((prev) => [
+          ...prev,
+          {
+            id: `g-${prev.length}`,
+            kind: 'report',
+            certainty: 'done',
+            text: `Done — clicked "${g.proceedLabel}". ${g.consequence}`,
+          },
+        ]);
+      }
+      return null;
+    });
+    inputRef.current?.focus();
+  }, []);
+
+  const cancelGate = useCallback(() => {
+    setPendingGate(null);
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: `gx-${prev.length}`,
+        kind: 'report',
+        certainty: 'didnt',
+        text: 'You stopped it — I didn’t do anything.',
+      },
+    ]);
+    inputRef.current?.focus();
+  }, []);
+
+  // Escape stops the loop from anywhere (the Confirm-gate owns its own Escape→cancel).
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === 'Escape' && acting) stop();
+      if (e.key === 'Escape' && acting && !pendingGate) stop();
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [acting, stop]);
+  }, [acting, pendingGate, stop]);
 
   return (
     <div className="pa">
@@ -156,6 +201,15 @@ export function App() {
         )}
       </div>
 
+      {pendingGate ? (
+        <ConfirmGate
+          key={`${pendingGate.toolName}:${pendingGate.value ?? ''}:${pendingGate.tier}:${pendingGate.unsure ? 'u' : ''}:${pendingGate.locatable ? '' : 'd'}`}
+          preview={pendingGate}
+          onApprove={approveGate}
+          onCancel={cancelGate}
+        />
+      ) : null}
+
       <details className="pa-gallery">
         <summary>Screen gallery (dev)</summary>
         <div className="pa-gallery__row">
@@ -166,6 +220,32 @@ export function App() {
               {l}
             </Button>
           ))}
+          <span className="pa-gallery__label">Gate:</span>
+          <Button
+            variant="ghost"
+            onClick={() => setPendingGate(buildGatePreview('cancel subscription', 1))}
+          >
+            Tier 1
+          </Button>
+          <Button variant="ghost" onClick={() => setPendingGate(buildGatePreview('pay $500', 2))}>
+            Tier 2
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              setPendingGate({ ...buildGatePreview('cancel subscription', 1), unsure: true })
+            }
+          >
+            Unsure
+          </Button>
+          <Button
+            variant="ghost"
+            onClick={() =>
+              setPendingGate({ ...buildGatePreview('cancel subscription', 1), locatable: false })
+            }
+          >
+            Can’t locate
+          </Button>
           <Button variant="ghost" onClick={() => setTurns([])}>
             Clear transcript
           </Button>

@@ -1,0 +1,223 @@
+/* Processing-locus indicator styles (Plan Step 4.1, issue #34).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css —
+ * no raw hex or bare color keyword appears here, so light + dark + high-contrast all
+ * follow the token layer for free. Focus is handled globally by tokens.css and never
+ * suppressed (this surface has no interactive controls of its own). Class names are
+ * `pal-*` (PageAgent-Locus) so they never collide with `.pa-*` (side panel), `.pah-*`
+ * (header), `.pac-*` (chat) or `.pak-*` (primitives).
+ *
+ * Three color JOBS stay separate: the on-device signal borrows ONLY brand-dim as an
+ * identity spark (never as a "safe" green); leaves-device is the Offshore material;
+ * safety trio is never touched here.
+ *
+ * REDUNDANT (non-hue) coding — how the states stay distinct in full greyscale and
+ * under forced-colors, before a single label is read:
+ *   • on-device  — a bare inline node, lit filled core, NO panel chrome.
+ *   • unavailable— a bare inline node, dimmed + struck by an off-signal slash, NO
+ *                  panel chrome (told from on-device by luminance + the slash).
+ *   • off-device — an enclosed panel with a DASHED/ticked border + tinted fill +
+ *                  an outbound-aperture glyph (a completely different material).
+ * Plus the label text always carries the meaning outright.
+ */
+
+.pal {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-xs);
+  line-height: var(--pa-leading);
+}
+
+.pal__label {
+  white-space: nowrap;
+}
+
+/* The node glyph wrapper — square, flex-none, and a positioning context for the
+ * unavailable off-signal slash. */
+.pal__node {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* ==========================================================================
+ * on-device — QUIET dormant instrumentation (instrument at rest).
+ * The label stays muted; brand-dim is used ONLY as the faint identity signal on
+ * the lit node core. No warning affordance, no "protected"/"secure" claim.
+ * ======================================================================== */
+.pal--on-device {
+  color: var(--muted);
+}
+.pal__node--on-device {
+  color: var(--brand-dim);
+}
+
+/* ==========================================================================
+ * unavailable — a distinct, fully-muted node. Dimmed AND struck with an
+ * off-signal slash so it reads as "off" in greyscale/forced-colors, not merely
+ * a fainter on-device. The word "unavailable" carries it regardless.
+ * ======================================================================== */
+.pal--unavailable {
+  color: var(--muted);
+}
+.pal__node--unavailable {
+  color: var(--muted);
+  opacity: 0.7;
+}
+/* Off-signal slash: a thin diagonal line across the node. currentColor → survives
+ * forced-colors as CanvasText; a shape cue, never hue. */
+.pal__node--unavailable::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 130%;
+  height: 1.5px;
+  background: currentColor;
+  transform: translate(-50%, -50%) rotate(-45deg);
+}
+
+/* ==========================================================================
+ * off-device — a DISTINCT MATERIAL: Offshore hue, dashed/ticked border, tinted
+ * fill, outbound-aperture glyph. Encloses the label + names what left. Overflow
+ * is clipped so the flip's motion trace exits the frame at the panel edge.
+ * ======================================================================== */
+.pal--off-device {
+  align-items: flex-start;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-1) var(--pa-space-2);
+  border: 1.5px dashed var(--offshore);
+  border-radius: var(--pa-radius);
+  background: var(--offshore-tint);
+  color: var(--offshore);
+  position: relative;
+  overflow: hidden;
+}
+.pal__aperture {
+  flex: none;
+  display: inline-flex;
+  color: var(--offshore);
+  margin-top: 1px;
+}
+.pal__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.pal--off-device .pal__label {
+  font-weight: 600;
+  white-space: normal;
+}
+.pal__detail {
+  color: var(--offshore);
+  font-size: var(--pa-text-xs);
+  line-height: var(--pa-leading);
+}
+
+/* The out-of-frame motion trace — a small Offshore mote that flies out past the
+ * panel edge on the on-device→off-device flip. Invisible at rest; only the flip
+ * animation reveals it, so reduced-motion (which collapses the animation) simply
+ * shows the static off-device panel with no lingering artifact. */
+.pal__trace {
+  position: absolute;
+  top: 50%;
+  left: var(--pa-space-4);
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--offshore);
+  opacity: 0;
+  pointer-events: none;
+}
+
+@keyframes pal-egress-out {
+  0% {
+    transform: translateX(0);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(220%);
+    opacity: 0;
+  }
+}
+
+/* Material swap on arrival: the border firms up from the neutral line into the
+ * Offshore dashed edge. End-state equals the resting off-device look, so the
+ * reduced-motion collapse lands exactly on the correct static frame. */
+@keyframes pal-panel-in {
+  0% {
+    border-color: var(--line);
+  }
+  100% {
+    border-color: var(--offshore);
+  }
+}
+
+.pal--off-device.is-flipping {
+  animation: pal-panel-in var(--pa-dur-slow) var(--pa-ease) 1;
+}
+.pal--off-device.is-flipping .pal__trace {
+  animation: pal-egress-out var(--pa-dur-slow) var(--pa-ease-firm) 1;
+}
+
+/* ==========================================================================
+ * Mixed turn (audioEgress) — reasoning-locus row + always-on audio-egress
+ * marker. The egress marker suppresses the private resting affordance: the
+ * standalone "On your device" resting chip is never shown while audio leaves.
+ * ======================================================================== */
+.pal--mixed {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--pa-space-1);
+}
+.pal__reasoning {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  color: var(--muted);
+}
+/* The lit egress marker: the Offshore leaves-device material, in an inline pill. */
+.pal__egress {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  padding: 2px var(--pa-space-2);
+  border: 1px dashed var(--offshore);
+  border-radius: var(--pa-radius-pill);
+  background: var(--offshore-tint);
+  color: var(--offshore);
+}
+.pal__egress-label {
+  white-space: nowrap;
+}
+.pal--mixed .pal__detail {
+  color: var(--muted);
+}
+.pal--mixed .pal__node--off-device,
+.pal--mixed .pal__egress {
+  color: var(--offshore);
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — keep the material cues that separate
+ * the states visible. Meaning is always ALSO in text, so this only preserves the
+ * non-text affordances (panel border, egress border, off-signal slash, trace).
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .pal--off-device,
+  .pal__egress {
+    border-color: CanvasText;
+  }
+  .pal__node--unavailable::after,
+  .pal__trace {
+    background: CanvasText;
+  }
+}
