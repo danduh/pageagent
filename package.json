@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "check:contrast": "node scripts/check-contrast.mjs"
+    "check:contrast": "node scripts/check-contrast.mjs",
+    "check:cvd": "node scripts/check-cvd.mjs"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.7.1",

@@ -133,6 +133,7 @@
   --offshore-tint: #101a24;
 
   --focus: var(--pa-halide-500);
+  --on-brand: #04110f; /* dark ink for text on a --brand fill; correct on both themes */
 }
 
 /* light values, applied when the OS prefers light and dark isn't forced */

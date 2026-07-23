@@ -3,22 +3,29 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>PageAgent — design tokens specimen</title>
+    <title>PageAgent — design system specimen</title>
     <link rel="stylesheet" href="../styles/tokens.css" />
+    <link rel="stylesheet" href="../components/primitives.css" />
     <style>
-      /* Specimen-only layout (standalone doc — not part of the extension). */
+      /* Specimen-only layout (standalone doc — not part of the extension). The real
+         inlined faces load in the app build; here the font tokens fall back to the
+         system stack, so this page shows the type SCALE + token wiring, not the exact
+         typefaces. Primitives are documented via their real classes (primitives.css). */
       body {
         margin: 0;
         background: var(--bg);
         color: var(--ink);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-family: var(--font-ui);
+        font-size: var(--pa-text-base);
+        line-height: var(--pa-leading);
         padding: var(--pa-space-5);
       }
       h1 {
-        font-size: 22px;
+        font-family: var(--pa-font-display);
+        font-size: var(--pa-text-xl);
       }
       h2 {
-        font-size: 15px;
+        font-size: var(--pa-text-sm);
         margin: var(--pa-space-5) 0 var(--pa-space-3);
         color: var(--muted);
         text-transform: uppercase;
@@ -28,13 +35,14 @@
         display: flex;
         flex-wrap: wrap;
         gap: var(--pa-space-3);
+        align-items: center;
       }
       .swatch {
         width: 132px;
         border: 1px solid var(--line);
         border-radius: var(--pa-radius);
         overflow: hidden;
-        font-size: 11px;
+        font-size: var(--pa-text-xs);
       }
       .chip {
         height: 56px;
@@ -60,7 +68,7 @@
         align-items: center;
         margin-bottom: var(--pa-space-4);
       }
-      button {
+      .toolbar button {
         font: inherit;
         background: var(--surface);
         color: var(--ink);
@@ -93,7 +101,7 @@
         display: inline-block;
       }
       .mono {
-        font-family: 'IBM Plex Mono', ui-monospace, monospace;
+        font-family: var(--pa-font-mono);
         background: var(--filament-tint);
         color: var(--filament);
         border-radius: var(--pa-radius-sm);
@@ -105,20 +113,44 @@
         background: var(--brand);
         border-radius: var(--pa-radius);
       }
-      .actuate:active {
-        transform: scale(0.97);
-        transition: transform var(--pa-dur-actuation) var(--pa-ease-firm);
+      .icons {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+        gap: var(--pa-space-3);
+      }
+      .icon {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 6px;
+        padding: var(--pa-space-3);
+        border: 1px solid var(--line);
+        border-radius: var(--pa-radius);
+        color: var(--ink);
+        font-size: var(--pa-text-xs);
+        text-align: center;
+      }
+      .icon svg {
+        color: var(--brand);
+      }
+      .note {
+        color: var(--muted);
+        font-size: var(--pa-text-sm);
+        max-width: 70ch;
       }
     </style>
   </head>
   <body>
     <div class="toolbar">
-      <h1 style="flex: 1; margin: 0">PageAgent — tokens</h1>
-      <button id="theme">Toggle theme</button>
+      <h1 style="flex: 1; margin: 0">PageAgent — design system</h1>
+      <button id="theme" type="button">Toggle theme</button>
+      <button id="hyper" type="button" aria-pressed="false">Hyperlegible: off</button>
     </div>
-    <p style="color: var(--muted); max-width: 60ch">
-      Living specimen for the "Local Instrument" token layer (<code>src/styles/tokens.css</code>).
-      Three separate color jobs, spacing, radius, and motion — both themes.
+    <p class="note">
+      Living specimen for the "Local Instrument" system. Three separate color jobs, type, icons,
+      primitives, and motion — both themes. (Real inlined faces load in the app; here type falls
+      back to the system stack. Interactive primitives are also exercised in
+      <code>src/components/components.test.tsx</code>.)
     </p>
 
     <div class="job">
@@ -131,7 +163,7 @@
     </div>
     <div class="job">
       <h2>Job 3 — Processing-locus (on-device vs. leaves-device)</h2>
-      <div class="row" style="align-items: center; gap: var(--pa-space-4)">
+      <div class="row" style="gap: var(--pa-space-4)">
         <span
           ><span class="node"><i></i></span> On your device</span
         >
@@ -143,11 +175,41 @@
     <div class="row" id="neutrals"></div>
 
     <h2>Type</h2>
-    <div style="font-size: 18px; font-weight: 700">
-      Display / Hanken Grotesk (falls back until #21)
+    <div
+      style="font-family: var(--pa-font-display); font-size: var(--pa-text-xl); font-weight: 700"
+    >
+      Display — Hanken Grotesk
     </div>
-    <div>Body / IBM Plex Sans — the quick brown fox jumps over the lazy dog.</div>
+    <div style="font-size: var(--pa-text-lg)">Body large — IBM Plex Sans</div>
+    <div>Body — the quick brown fox jumps over the lazy dog · àçéîü · $84.30 · €1.234,56</div>
     <div>Tool identifier: <span class="mono">click_rerun_failed_jobs</span></div>
+    <p class="note">Toggle "Hyperlegible" above to swap the UI face to Atkinson Hyperlegible.</p>
+
+    <h2>Icons (line, currentColor — no padlock/shield)</h2>
+    <div class="icons" id="iconGrid"></div>
+
+    <h2>Primitives (real classes from primitives.css)</h2>
+    <div class="row">
+      <button class="pak-btn pak-btn--primary" type="button">Send</button>
+      <button class="pak-btn pak-btn--ghost" type="button">Cancel</button>
+      <button class="pak-btn pak-btn--destructive" type="button">Cancel subscription</button>
+    </div>
+    <div class="row" style="margin-top: var(--pa-space-3)">
+      <span class="pak-badge pak-badge--safe">reversible</span>
+      <span class="pak-badge pak-badge--caution">asks first</span>
+      <span class="pak-badge pak-badge--destructive">destructive</span>
+      <span class="pak-badge pak-badge--brand">site tool</span>
+      <span class="pak-badge pak-badge--filament">read from page</span>
+    </div>
+    <div style="margin-top: var(--pa-space-3); max-width: 420px">
+      <div class="pak-banner pak-banner--caution" role="status">
+        On-device AI isn't available in this browser yet.
+      </div>
+    </div>
+    <p class="note">
+      Tabs, ListRow, Toggle, Chip, Field, and Card are interactive React components — see
+      <code>components.test.tsx</code> (rendered + axe-clean) and Phase 3 surfaces.
+    </p>
 
     <h2>Spacing &amp; radius</h2>
     <div class="row" style="align-items: flex-end">
@@ -159,12 +221,37 @@
     </div>
 
     <h2>Motion</h2>
-    <button class="actuate">Press me — actuation (respects reduced-motion)</button>
+    <button class="pak-btn pak-btn--ghost" type="button" style="transition: transform 150ms">
+      Press me — actuation (respects reduced-motion)
+    </button>
 
     <script>
       const NEUTRALS = ['bg', 'surface', 'surface-2', 'ink', 'muted', 'line'];
       const BRAND = ['brand', 'brand-ink', 'brand-dim', 'focus'];
       const SAFETY = ['safe', 'safe-tint', 'caution', 'caution-tint', 'halt', 'halt-tint'];
+      // Icon name -> inner SVG markup (mirrors src/components/icons.tsx).
+      const ICONS = {
+        'Local node (on device)':
+          '<rect x="5" y="5" width="14" height="14" rx="2.5"/><circle cx="12" cy="12" r="2.5" fill="currentColor" stroke="none"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/>',
+        'Outbound (leaves device)':
+          '<path d="M14 4H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7"/><path d="M10 12h11"/><path d="M17.5 8.5 21 12l-3.5 3.5"/>',
+        'Confirm-gate checkpoint':
+          '<path d="M3 20h18"/><path d="M6.5 20v-8"/><path d="M5 9h16v3H5z"/><path d="M9 9 6 12M13 9l-3 3M17 9l-3 3M21 9l-3 3"/>',
+        Click: '<path d="M4 4 11 20.5 13.4 13.4 20.5 11 Z"/><path d="M13.5 13.5 19 19"/>',
+        Type: '<rect x="2.5" y="6.5" width="19" height="11" rx="2"/><path d="M6.5 10.5h.001M10 10.5h.001M13.5 10.5h.001M17 10.5h.001"/><path d="M8 14h8"/>',
+        Choose:
+          '<rect x="3.5" y="5" width="4.5" height="4.5" rx="1"/><path d="M4.7 7.3 5.6 8.2 7.1 6.3"/><rect x="3.5" y="14.5" width="4.5" height="4.5" rx="1"/><path d="M11 7.25h9.5M11 16.75h9.5"/>',
+        'Follow link':
+          '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+        Rescan:
+          '<path d="M21 4v6h-6"/><path d="M3 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 15-3.5L21 10M3 14l2.5 4.5A9 9 0 0 0 20.5 15"/>',
+        Stop: '<rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor" stroke="none"/>',
+        Search: '<circle cx="11" cy="11" r="6.5"/><path d="M16 16 20.5 20.5"/>',
+        Chevron: '<path d="M9 5 16 12 9 19"/>',
+      };
+      function svg(inner) {
+        return `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
+      }
       function swatch(name) {
         const v = getComputedStyle(document.documentElement)
           .getPropertyValue('--' + name)
@@ -175,11 +262,22 @@
         document.getElementById('neutrals').innerHTML = NEUTRALS.map(swatch).join('');
         document.getElementById('brand').innerHTML = BRAND.map(swatch).join('');
         document.getElementById('safety').innerHTML = SAFETY.map(swatch).join('');
+        document.getElementById('iconGrid').innerHTML = Object.entries(ICONS)
+          .map(([label, inner]) => `<div class="icon">${svg(inner)}<span>${label}</span></div>`)
+          .join('');
       }
       document.getElementById('theme').addEventListener('click', () => {
         const r = document.documentElement;
         r.setAttribute('data-theme', r.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
         paint();
+      });
+      document.getElementById('hyper').addEventListener('click', (e) => {
+        const r = document.documentElement;
+        const on = r.hasAttribute('data-hyperlegible');
+        if (on) r.removeAttribute('data-hyperlegible');
+        else r.setAttribute('data-hyperlegible', '');
+        e.currentTarget.setAttribute('aria-pressed', String(!on));
+        e.currentTarget.textContent = 'Hyperlegible: ' + (on ? 'off' : 'on');
       });
       paint();
     </script>

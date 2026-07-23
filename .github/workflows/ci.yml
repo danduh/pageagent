@@ -24,3 +24,5 @@ jobs:
       - run: npm run build
       # Fails on any REQUIRED WCAG contrast regression in the design tokens (Step 2.5).
       - run: npm run check:contrast
+      # Advisory color-blind / greyscale distinguishability report (exits 0; aids D3 sign-off).
+      - run: npm run check:cvd
