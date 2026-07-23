@@ -74,3 +74,24 @@ This is the fixture's `isIntended(el) = el.isConnected && accName(el) === TARGET
 - **No performance data** on re-query cost on a genuinely large DOM (interacts with the Step 7.3 scan-performance budget).
 
 **Residual unknowns (Spike B):** as above — ambiguity/decline unproven, hard-DOM cases untested, real-framework id stability unmeasured, `document.modelContext` presence + MAIN-world read unconfirmed in the real host, WeakRef GONE case unobserved, re-query cost on large DOM unmeasured.
+
+---
+
+## Canary run (Chrome 152 Canary) — 2026-07-23
+
+Driven live via Claude-in-Chrome on the user's **Chrome 152.0.0.0 Canary**, on an https page (`example.com`). Still **not** the MV3 side-panel document, but a real profile with Nano resident — this retires most of the residual unknowns.
+
+### Spike A (#5) — Prompt API on Canary 152
+- `typeof LanguageModel === "function"`; **`availability() === "available"`** — Nano is **resident** (no download needed on this machine).
+- **`create()` succeeds with NO user gesture** (the gesture requirement only applies to the `downloadable`/`downloading` states). `create()` ~1 ms; `prompt()` → "PONG" in ~1.3 s.
+- **Structured output (`responseConstraint`): works** — valid JSON in ~0.9 s, semantically correct routing ("rerun the failed jobs" → `click_rerun_failed_jobs`) — **but not strictly schema-faithful** (emitted `"tool":{"type":"click_rerun_failed_jobs"}` for a `string`-typed enum field). → the loop's robust **parse + coerce** layer is **validated as necessary**, not optional.
+- **Native tool-calling: NOT usable.** `create({ tools: [...] })` is *accepted*, but the model **never dispatches**: with a matching `click_rerun_failed_jobs` tool it (a) replied in prose asking for context, and (b) under a forceful "call a tool, never reply in prose" system prompt emitted **`run_jobs(status="failed")` as plain text** — hallucinating a tool name and never invoking `execute()`. This **re-tests and CONFIRMS** the docs/07 §2 assumption on Chrome 152.
+
+**Verdict (Spike A):** the on-device brain is **viable and fast** on 152; **the manual capped `INTENT_SCHEMA` loop is confirmed** (native tool-calling stays off — re-test done, decision rule not met); structured-output-with-coercion is the routing mechanism. **Residual:** confirm `create()` in the *actual MV3 side-panel document* under the extension origin + origin trial (naturally covered when Phase 1 builds the real extension); and download UX on a *fresh* machine (this one already had Nano resident).
+
+### Spike B (#6) — handle re-resolution on Canary 152
+- **`document.modelContext` is PRESENT** on Chrome 152 (was absent on the embedded 148) — the WebMCP surface exists in this build. Internal registry stays the reliable base; page-surface registration is now testable with real declared tools.
+- **Unique target, reordered re-render:** `WeakRef` STALE · `id` HIT · accessible-name HIT (1 match) · DOM index **WRONG** → decision **ACT**. Matches the 148 result.
+- **Ambiguous name, no id (the residual gap):** 2 name matches → `byName: AMBIGUOUS` → decision **DECLINE**. ✅ The **decline-on-ambiguity path is validated against real data** — the core of the locate-or-decline guarantee holds.
+
+**Verdict (Spike B):** the multi-signal fingerprint + four-outcome gate + **decline-on-ambiguity** are confirmed on real Chrome 152. **Residual:** hard-DOM cases (shadow/virtualized/canvas/cross-route) and real-framework id stability + re-query cost (tracked on #6/#10).
