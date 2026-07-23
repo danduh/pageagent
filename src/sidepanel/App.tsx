@@ -35,6 +35,24 @@ export function App() {
     }
   }, []);
 
+  // Escape stops the loop / clears the input — interruptibility is keyboard-first
+  // and app-wide, so it lives on the document rather than a static element.
+  useEffect(() => {
+    function onDocKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (acting) {
+        setActing(false);
+        setStatus('Stopped.');
+        inputRef.current?.focus();
+      } else if (input) {
+        setInput('');
+        setStatus('Cleared.');
+      }
+    }
+    document.addEventListener('keydown', onDocKeyDown);
+    return () => document.removeEventListener('keydown', onDocKeyDown);
+  }, [acting, input]);
+
   function send() {
     const text = input.trim();
     if (!text) return;
@@ -45,7 +63,13 @@ export function App() {
     window.setTimeout(() => {
       setActing(false);
       setStatus('');
-      setMessages((m) => [...m, { who: 'agent', text: 'I heard you, but I have no engine yet — this is the Phase 1 build shell.' }]);
+      setMessages((m) => [
+        ...m,
+        {
+          who: 'agent',
+          text: 'I heard you, but I have no engine yet — this is the Phase 1 build shell.',
+        },
+      ]);
       inputRef.current?.focus();
     }, 500);
   }
@@ -56,19 +80,12 @@ export function App() {
     inputRef.current?.focus();
   }
 
-  function onKeyDown(e: import('react').KeyboardEvent) {
-    if (e.key !== 'Escape') return;
-    if (acting) stop();
-    else if (input) {
-      setInput('');
-      setStatus('Cleared.');
-    }
-  }
-
   // Provision must run inside this click handler (a user gesture) with no await before create().
   function downloadModel() {
     setStatus('Downloading on-device model…');
-    provisionLanguageModel((loaded) => setStatus(`Downloading on-device model… ${Math.round(loaded * 100)}%`))
+    provisionLanguageModel((loaded) =>
+      setStatus(`Downloading on-device model… ${Math.round(loaded * 100)}%`)
+    )
       .then(async () => {
         setStatus('On-device model ready.');
         setCap(await detectLanguageModel());
@@ -77,7 +94,7 @@ export function App() {
   }
 
   return (
-    <div className="pa" onKeyDown={onKeyDown}>
+    <div className="pa">
       <header className="pa-header">
         <div className="pa-identity" aria-label="Current page">
           <span className="pa-favicon" aria-hidden="true" />
@@ -107,27 +124,34 @@ export function App() {
         )}
       </div>
 
-      <nav className="pa-tabs" role="tablist" aria-label="Surfaces">
-        <button role="tab" aria-selected="true" className="pa-tab is-active">Chat</button>
-        <button role="tab" aria-selected="false" className="pa-tab">Tools</button>
-        <button role="tab" aria-selected="false" className="pa-tab">Scan</button>
+      <div className="pa-tabs" role="tablist" aria-label="Surfaces">
+        <button role="tab" aria-selected="true" className="pa-tab is-active">
+          Chat
+        </button>
+        <button role="tab" aria-selected="false" className="pa-tab">
+          Tools
+        </button>
+        <button role="tab" aria-selected="false" className="pa-tab">
+          Scan
+        </button>
         <button role="tab" aria-selected="false" className="pa-tab pa-tab--later" disabled>
           Profiles <span className="pa-later">Later</span>
         </button>
-      </nav>
+      </div>
 
       <main className="pa-body" role="main">
         <h1 className="pa-hello-title">PageAgent — Phase 1 build</h1>
         <p className="pa-hello-lead">
-          Now a bundled React + TypeScript side panel. The engine, real surfaces, and safety layer arrive in later phases.
+          Now a bundled React + TypeScript side panel. The engine, real surfaces, and safety layer
+          arrive in later phases.
         </p>
-        <ol className="pa-log" role="log" aria-live="polite" aria-label="Session log">
+        <div className="pa-log" role="log" aria-live="polite" aria-label="Session log">
           {messages.map((m, i) => (
-            <li key={i} className={`pa-msg pa-msg--${m.who}`}>
+            <div key={i} className={`pa-msg pa-msg--${m.who}`}>
               <b>{m.who === 'you' ? 'You' : 'PageAgent'}:</b> {m.text}
-            </li>
+            </div>
           ))}
-        </ol>
+        </div>
       </main>
 
       <footer className="pa-footer">

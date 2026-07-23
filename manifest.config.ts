@@ -17,7 +17,8 @@ export default defineManifest({
   manifest_version: 3,
   name: 'PageAgent',
   version: '0.0.1',
-  description: 'Turn any web page into something you can talk to — on-device, in the page in front of you.',
+  description:
+    'Turn any web page into something you can talk to — on-device, in the page in front of you.',
   minimum_chrome_version: '128',
   icons,
   action: {
