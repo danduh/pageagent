@@ -10,9 +10,10 @@
 // TEXT — never by color or icon alone — and every control clears a 44×44 target.
 
 import type { HeaderProps } from './contracts';
-import type { FreshnessState, LocusState } from '../engine/types';
-import { LocalNodeIcon, OutboundApertureIcon, RescanIcon, StopIcon } from '../components/icons';
+import type { FreshnessState } from '../engine/types';
+import { RescanIcon, StopIcon } from '../components/icons';
 import { Button } from '../components/primitives';
+import { ProcessingLocus } from './ProcessingLocus';
 import './header.css';
 
 /* Freshness copy — the state is always spelled out; color/prominence only reinforce
@@ -35,19 +36,6 @@ const RESCAN_LABEL: Record<FreshnessState, string> = {
   failed: 'Scan again',
 };
 
-/* Locus copy — no "protected"/"secure" claim; no padlock/shield. On-device is quiet
- * dormant instrumentation; off-device names, truthfully, that data leaves the device. */
-const LOCUS_TEXT: Record<LocusState, string> = {
-  'on-device': 'On your device',
-  unavailable: 'On-device AI unavailable',
-  'off-device': 'Leaves your device',
-};
-
-function LocusIcon({ locus }: { locus: LocusState }) {
-  // Decorative in every case — the adjacent label carries the meaning.
-  return locus === 'off-device' ? <OutboundApertureIcon size={16} /> : <LocalNodeIcon size={16} />;
-}
-
 export function Header({ page, freshness, locus, acting, onRescan, onStop }: HeaderProps) {
   return (
     <header className="pah">
@@ -62,10 +50,7 @@ export function Header({ page, freshness, locus, acting, onRescan, onStop }: Hea
           </span>
         </div>
 
-        <div className={`pah__locus pah__locus--${locus}`}>
-          <LocusIcon locus={locus} />
-          <span className="pah__locus-label">{LOCUS_TEXT[locus]}</span>
-        </div>
+        <ProcessingLocus locus={locus} />
       </div>
 
       {/* Region 2 (freshness) — the status is a persistent polite live region so the
@@ -91,7 +76,7 @@ export function Header({ page, freshness, locus, acting, onRescan, onStop }: Hea
         <div className="pah__bar pah__bar--acting">
           <span className="pah__pulse" aria-hidden="true" />
           <span className="pah__acting-label">Working on this page</span>
-          <Button variant="destructive" className="pah__stop" onClick={onStop}>
+          <Button variant="firm" className="pah__stop" onClick={onStop}>
             <StopIcon size={18} />
             Stop
           </Button>

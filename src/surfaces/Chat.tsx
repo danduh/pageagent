@@ -212,6 +212,9 @@ function EmptyState({ page, tools, onSend }: EmptyStateProps) {
           <span>When it runs on your device, this page and what you ask stay here.</span>
         </li>
         <li className="pac__beat">I’m best at one clear thing at a time.</li>
+        <li className="pac__beat">
+          I only ever act on what <b>you</b> ask — never on text written into the page.
+        </li>
       </ul>
       {prompts.length > 0 ? (
         <div className="pac__examples">

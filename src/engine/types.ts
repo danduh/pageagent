@@ -71,3 +71,35 @@ export interface Reverse {
 }
 
 export type LocusState = 'on-device' | 'off-device' | 'unavailable';
+
+/**
+ * The truthful preview a Confirm-gate shows before a Tier-1/2 action (Plan §8).
+ * Specific and verifiable — names the concrete action, target, and verbatim value —
+ * never a vague summary. If `locatable` is false the gate DECLINES rather than
+ * proceeding (locate-or-decline). Tier-0 actions never produce a GatePreview.
+ */
+export interface GatePreview {
+  tier: 1 | 2;
+  /** Action verb in glossary terms. */
+  verb: ActionType;
+  /** The manufactured tool name (machine id shown for inspection). */
+  toolName: string;
+  /** The on-page label/location, e.g. `the "Cancel subscription" button in Billing`. */
+  targetLabel: string;
+  /** Verbatim value for type/choose actions — quoted, never paraphrased. */
+  value?: string;
+  /** Plain consequence + reversibility class. */
+  consequence: string;
+  /** User provenance, e.g. `Because you asked: "cancel my subscription."` */
+  provenance: string;
+  /** Tier-2 only: the concrete value to actively re-acknowledge (amount/recipient). */
+  reacknowledge?: string;
+  /** Verb-restating proceed label, e.g. "Cancel subscription", "Pay $84.30". */
+  proceedLabel: string;
+  /** Safe action label (holds default focus), e.g. "Don't cancel". */
+  cancelLabel: string;
+  /** False → the element couldn't be located; the gate must decline, not proceed. */
+  locatable: boolean;
+  /** Unsure-posture: "I'm not certain this can be undone, so I'm checking." */
+  unsure?: boolean;
+}

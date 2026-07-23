@@ -1,0 +1,341 @@
+/* Confirm-gate styles (Plan Steps 4.2 + 4.3).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css — no
+ * raw hex or bare color keyword appears here, so light + dark + high-contrast follow the
+ * token layer for free. Focus is handled globally by tokens.css `:focus-visible` and is
+ * never suppressed. Interactive targets are ≥44×44 CSS px. Class names are `pcg-*`
+ * (PageAgent-Confirm-Gate) so they never collide with `.pa-*` (side panel), `.pak-*`
+ * (primitives), `.pac-*` (Chat) or `.pah-*` (Header).
+ *
+ * Tier discipline (design contract):
+ *   - The gate’s Halt accent (the structural card framing) appears ONLY at Tier 2.
+ *   - Tier 1 keeps a firm, NEUTRAL card; its proceed control is the destructive Button
+ *     primitive (a restrained halt-tinted surface), which the spec mandates for Tier 1.
+ *   - The unsure posture is a caution-toned uncertainty marker — never a louder red.
+ */
+
+/* Visually-hidden helper — kept local so this surface doesn't depend on load order. */
+.pcg__vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+ * Overlay + scrim — the reserved top layer.
+ * ======================================================================== */
+.pcg-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--pa-z-gate);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--pa-space-4);
+}
+.pcg-scrim {
+  position: absolute;
+  inset: 0;
+  /* A bg-tinted veil that dims the panel behind without introducing a raw color. */
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  animation: pcg-fade var(--pa-dur-fast) var(--pa-ease);
+}
+
+/* ==========================================================================
+ * The card — visually an inline card, behaviorally the modal alertdialog.
+ * ======================================================================== */
+.pcg {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-4);
+  width: 100%;
+  max-width: 34rem;
+  max-height: 100%;
+  overflow-y: auto;
+  padding: var(--pa-space-5);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  box-shadow: var(--pa-elev-1);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+  /* Expressive entrance only — never a timing gate on any control. The resting style is
+     fully visible, so `prefers-reduced-motion` (which collapses the duration globally)
+     simply lands on the final frame. */
+  animation: pcg-enter var(--pa-dur-slow) var(--pa-ease-firm);
+}
+
+/* Tier 2 — escalated by STRUCTURE and weight, not louder motion. The Halt accent (the
+   card’s top edge + border) is reserved to this tier alone. */
+.pcg--tier2 {
+  border-color: var(--halt);
+  box-shadow:
+    inset 0 3px 0 0 var(--halt),
+    var(--pa-elev-1);
+  animation-name: pcg-enter-heavy;
+}
+
+/* Unsure — a DISTINCT caution accent (an uncertainty marker), never a louder red. */
+.pcg--unsure {
+  border-color: var(--caution);
+  box-shadow:
+    inset 0 3px 0 0 var(--caution),
+    var(--pa-elev-1);
+}
+
+/* ==========================================================================
+ * Header — checkpoint mark + title.
+ * ======================================================================== */
+.pcg__header {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+}
+.pcg__mark {
+  flex: none;
+  color: var(--muted);
+}
+.pcg--tier2 .pcg__mark {
+  color: var(--halt);
+}
+.pcg--unsure .pcg__mark {
+  color: var(--caution);
+}
+.pcg__title {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+/* Tier 2 title carries extra typographic weight — the tier difference is structural. */
+.pcg--tier2 .pcg__title {
+  font-size: var(--pa-text-xl);
+  font-weight: 700;
+}
+
+/* ==========================================================================
+ * Unsure marker.
+ * ======================================================================== */
+.pcg__unsure {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-2) var(--pa-space-3);
+  background: var(--caution-tint);
+  border: 1px solid var(--caution);
+  border-radius: var(--pa-radius);
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+}
+.pcg__unsure-tag {
+  flex: none;
+  padding: 1px var(--pa-space-2);
+  border: 1px solid var(--caution);
+  border-radius: var(--pa-radius-sm);
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ==========================================================================
+ * Preview body — the truthful anatomy, in order.
+ * ======================================================================== */
+.pcg__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+}
+.pcg__action {
+  margin: 0;
+  font-size: var(--pa-text-base);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pcg__verb {
+  font-weight: 700;
+}
+.pcg__toolname {
+  margin: 0;
+}
+/* Machine tool-id — mono, shown for inspection; muted so the on-page label stays primary. */
+.pcg__toolname-code {
+  display: inline-block;
+  padding: 1px var(--pa-space-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius-sm);
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* Verbatim value — a DISTINCT mono/filament block, visually walled off from the gate’s
+   own prose. Quote marks are CSS-decorative so the announced value stays exact. */
+.pcg__value {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+}
+.pcg__value-label {
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+.pcg__value-text {
+  padding: var(--pa-space-2) var(--pa-space-3);
+  background: var(--filament-tint);
+  border: 1px solid var(--filament);
+  border-left-width: 3px;
+  border-radius: var(--pa-radius);
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pcg__value-text::before {
+  content: '“';
+}
+.pcg__value-text::after {
+  content: '”';
+}
+
+.pcg__consequence {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Provenance — the traceable "Because you asked…" line, set apart as meta. */
+.pcg__provenance {
+  margin: 0;
+  padding-left: var(--pa-space-3);
+  border-left: 2px solid var(--line);
+  font-size: var(--pa-text-sm);
+  font-style: italic;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+ * Tier-2 value re-acknowledgment — comprehension, never timing.
+ * ======================================================================== */
+.pcg__ack {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-3);
+  min-height: 44px;
+  padding: var(--pa-space-2) var(--pa-space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--halt);
+  border-radius: var(--pa-radius);
+}
+.pcg__ack-box {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--halt);
+  cursor: pointer;
+}
+.pcg__ack-label {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--pa-space-1);
+  min-height: 44px;
+  cursor: pointer;
+  font-size: var(--pa-text-base);
+  color: var(--ink);
+}
+.pcg__ack-value {
+  font-family: var(--pa-font-mono);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+ * Footer — stacked, full-width targets (easy to hit; robust in a narrow panel).
+ * The SAFE action sits on top and holds default focus; Approve is below, deliberate.
+ * ======================================================================== */
+.pcg__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+}
+.pcg__btn {
+  width: 100%;
+}
+
+/* ==========================================================================
+ * Motion primitives — expressive entrance only, single-shot (no idle loop).
+ * ======================================================================== */
+@keyframes pcg-fade {
+  from {
+    opacity: 0.001;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pcg-enter {
+  from {
+    opacity: 0.001;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+/* Tier 2 lands with more weight — a longer travel/settle, still expressive-only. */
+@keyframes pcg-enter-heavy {
+  from {
+    opacity: 0.001;
+    transform: translateY(10px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — meaning is always in text; these only
+ * preserve the affordance (box-shadow accents are dropped by the mode, so the tier /
+ * unsure edge is re-expressed as a real border-top).
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .pcg {
+    border-color: CanvasText;
+    background: Canvas;
+  }
+  .pcg--tier2,
+  .pcg--unsure {
+    border-top: 3px solid CanvasText;
+  }
+  .pcg__toolname-code,
+  .pcg__value-text,
+  .pcg__unsure,
+  .pcg__unsure-tag,
+  .pcg__ack {
+    border-color: CanvasText;
+  }
+}

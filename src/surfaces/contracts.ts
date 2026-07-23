@@ -4,7 +4,7 @@
 
 import type { RefObject } from 'react';
 import type { Turn } from '../engine/port';
-import type { FreshnessState, LocusState, PageInfo, Tool } from '../engine/types';
+import type { FreshnessState, GatePreview, LocusState, PageInfo, Tool } from '../engine/types';
 
 export interface HeaderProps {
   page: PageInfo;
@@ -31,4 +31,18 @@ export interface ChatProps {
   onReverse: (turnId: string) => void;
   /** Pick a clarification choice chip. */
   onChoice: (choice: string) => void;
+}
+
+export interface ConfirmGateProps {
+  preview: GatePreview;
+  /** Fired only after the deliberate approve act (Tier-2: after value re-acknowledgment). */
+  onApprove: () => void;
+  onCancel: () => void;
+}
+
+export interface LocusProps {
+  locus: LocusState;
+  /** Later (voice): audio is leaving the device for cloud STT — suppresses the resting
+   *  affordance and lights an always-on audio-egress marker naming what left. */
+  audioEgress?: boolean;
 }
