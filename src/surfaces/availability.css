@@ -1,0 +1,154 @@
+/* AVAILABILITY banner styles (Plan Step 5.7, issue #43).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css — no
+ * raw hex or bare color keyword appears here, so light + dark + forced-colors follow the
+ * token layer for free. Focus is handled globally by tokens.css `:focus-visible` and is
+ * never suppressed; interactive controls inherit the ≥44×44 target from the pak-btn
+ * primitive. Class names are `pab-*` (PageAgent-Availability-Banner) so they never
+ * collide with `.pa-*` (panel), `.pak-*` (primitives), `.pcg-*` (gate), `.pal-*`
+ * (locus), `.pac-*` (chat) or `.pah-*` (header).
+ *
+ * Two color JOBS stay separate and never blur:
+ *   • the banner itself is a calm CAUTION notice (an amber left tick) — a
+ *     reduced-capability heads-up, never Halt red (not an emergency) and never brand
+ *     teal (identity only). It carries NO "protected"/"secure" claim and no green badge.
+ *   • the cloud fallback is the OFFSHORE material (leaves-device): the outbound-aperture
+ *     glyph, --offshore hue, a dashed border with a solid "ticked" left edge, and a
+ *     tinted fill — deliberately a different material from the on-device resting state,
+ *     so the two can never be confused. Its identity rides on the icon + dashed border +
+ *     tint (non-text cues); the body text stays --ink for guaranteed legibility.
+ */
+
+.pab {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--caution);
+  border-radius: var(--pa-radius);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+
+.pab__title {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+
+.pab__body {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pab__body-strong {
+  font-weight: 700;
+}
+
+/* ==========================================================================
+ * Offshore fallback — a DISTINCT leaves-device material (never the resting look).
+ * ======================================================================== */
+.pab__offshore {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-3);
+  border: 1.5px dashed var(--offshore);
+  border-left: 3px solid var(--offshore);
+  border-radius: var(--pa-radius);
+  background: var(--offshore-tint);
+}
+.pab__offshore-head {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+}
+.pab__aperture {
+  flex: none;
+  color: var(--offshore);
+}
+.pab__offshore-title {
+  font-weight: 600;
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+}
+
+/* Trade text stays --ink — max legibility on the tint in both themes. */
+.pab__trade {
+  margin: 0;
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.pab__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+}
+/* Author `display` must not defeat the `hidden` attribute when the offer is collapsed. */
+.pab__panel[hidden] {
+  display: none;
+}
+
+.pab__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+}
+
+/* The controls stretch full-width — easy targets in a ~320px panel. Base sizing, the
+ * hover wash and the focus ring all come from the pak-btn primitive; these rules only
+ * recolor within the offshore context (scoped under .pab to win over the base variant).
+ * All labels are --ink so no interactive text rides on a marginal tint contrast. */
+.pab .pab__toggle,
+.pab .pab__use,
+.pab .pab__decline {
+  width: 100%;
+}
+.pab .pab__toggle {
+  color: var(--ink);
+  background: transparent;
+  border-color: var(--offshore);
+  font-weight: 600;
+}
+.pab .pab__use {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--offshore);
+  border-width: 1.5px;
+  font-weight: 600;
+}
+.pab__use-aperture {
+  flex: none;
+  color: var(--offshore);
+}
+.pab .pab__decline {
+  color: var(--ink);
+  background: var(--surface);
+  border-color: var(--line);
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — meaning is always ALSO in text; these only
+ * preserve the material affordances (the banner edge, the Offshore dashed panel, and
+ * the button outlines) that separate the states without relying on hue. The dashed vs.
+ * solid border STYLE survives the mode, so the offshore material stays distinct.
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .pab,
+  .pab__offshore,
+  .pab .pab__toggle,
+  .pab .pab__use,
+  .pab .pab__decline {
+    border-color: CanvasText;
+  }
+}

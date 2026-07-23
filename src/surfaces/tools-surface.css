@@ -1,0 +1,265 @@
+/* Tools surface + Execute styles (Plan Steps 5.3–5.5).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css — no
+ * raw hex or bare color keyword appears here, so light + dark + high-contrast follow
+ * the token layer for free. Focus is the global `:focus-visible` (never suppressed);
+ * interactive targets are ≥44×44 CSS px. Class names are `pat-*` / `pat__*`
+ * (PageAgent-Tools) so they never collide with `.pa-*`, `.pak-*`, or `.pac-*`.
+ *
+ * Density target: the dense 60-tool list must stay legible and scroll cleanly at the
+ * ~320–400px side-panel width and at 200% zoom, with zero horizontal page scroll.
+ */
+
+/* ==========================================================================
+ * Shell — a fixed search/count head over a scrolling row list.
+ * ======================================================================== */
+.pat {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+
+.pat__head {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* Search — a labelled Field (the label is visually hidden but stays wired to the input)
+ * with an inset SearchIcon. The magnifier + placeholder are the visible affordance. */
+.pat__search {
+  position: relative;
+}
+.pat__search .pak-field__label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.pat__search-icon {
+  position: absolute;
+  left: var(--pa-space-3);
+  /* Anchored to the input (the first in-flow element once the label is hidden), which
+   * is 44px tall — so the glyph stays centred on it even when a hint sits below. */
+  top: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.pat__search .pak-field__input {
+  padding-left: calc(var(--pa-space-3) + 18px + var(--pa-space-2));
+}
+
+.pat__count {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--pa-text-sm);
+}
+.pat__count-gap {
+  color: var(--filament);
+}
+
+.pat__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ==========================================================================
+ * List — a single roving tab stop (the ListRow primitive); spec-card rows.
+ * ======================================================================== */
+.pat__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Each row carries a FUNCTIONAL left-edge tick keyed to its Action-type — the same hue
+ * map as the Card primitive. Meaning is always also in the Action-type Badge word. */
+.pat-row {
+  position: relative;
+}
+.pat-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: var(--pa-space-3);
+  bottom: var(--pa-space-3);
+  width: 3px;
+  border-radius: var(--pa-radius-pill);
+  background: var(--muted);
+}
+.pat-row--click::before {
+  background: var(--brand);
+}
+.pat-row--type::before {
+  background: var(--filament);
+}
+.pat-row--choose::before {
+  background: var(--offshore);
+}
+.pat-row--follow-link::before {
+  background: var(--ink);
+}
+
+/* Multi-line spec-card content: top-align the row so the glyph sits with the id line. */
+.pat-row .pak-listrow__main {
+  align-items: flex-start;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-3) var(--pa-space-3) var(--pa-space-3) var(--pa-space-4);
+}
+.pat-row__glyph {
+  flex: none;
+  display: inline-flex;
+  margin-top: 2px;
+  color: var(--muted);
+}
+.pat-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+  min-width: 0;
+}
+.pat-row__id {
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-xs);
+  color: var(--muted);
+  word-break: break-word;
+}
+.pat-row__name {
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pat-row__sub {
+  font-size: var(--pa-text-sm);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.pat-row__badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pa-space-1);
+  margin-top: var(--pa-space-1);
+}
+
+/* Trailing action column: a visible Run and a one-tap Details disclosure. Stacked so it
+ * stays inside the narrow column; each control keeps its full ≥44px target. */
+.pat-row__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+  padding: var(--pa-space-2) 0;
+  align-items: stretch;
+}
+.pat-row__actions .pak-btn {
+  min-width: 0;
+  padding: 0 var(--pa-space-3);
+}
+.pat-chevron {
+  transition: transform var(--pa-dur-fast) var(--pa-ease);
+}
+.pat-chevron--open {
+  transform: rotate(90deg);
+}
+
+/* ==========================================================================
+ * Details — progressive disclosure (element mapping / provenance / selector),
+ * NOT a raw dump. Rendered as a sibling list item under its row.
+ * ======================================================================== */
+.pat-details {
+  list-style: none;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+.pat-details__panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-3) var(--pa-space-4) var(--pa-space-4);
+}
+.pat-details__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+}
+.pat-details__label {
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+.pat-details__value {
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.pat-details__mono {
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius-sm);
+  padding: var(--pa-space-2) var(--pa-space-3);
+  word-break: break-word;
+}
+.pat-details__note {
+  margin: 0;
+  font-size: var(--pa-text-sm);
+  color: var(--muted);
+}
+.pat-details__run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  padding-top: var(--pa-space-1);
+}
+
+/* ==========================================================================
+ * Calm empty + no-results states — honest, never an error tone.
+ * ======================================================================== */
+.pat__empty,
+.pat__noresults {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+  align-items: flex-start;
+  padding: var(--pa-space-5) var(--pa-space-4);
+  max-width: 46ch;
+}
+.pat__empty-title,
+.pat__noresults-title {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-lg);
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+.pat__empty-body {
+  margin: 0;
+  color: var(--muted);
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — keep the non-text tick visible.
+ * Meaning is always also in text, so this only preserves the affordance.
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .pat-row::before {
+    background: CanvasText;
+  }
+}

@@ -56,7 +56,18 @@ export function createStubEngine(opts: StubOptions = {}): EnginePort {
     async scan(signal?: AbortSignal): Promise<ScanResult> {
       await delay(stepMs * 1.5, signal);
       if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
-      return { status: 'ok', tools, coverage: OK_COVERAGE };
+      // Coverage reflects the ACTUAL tool-set (honest for both the sparse + dense pages).
+      const unlabeled = tools.filter((t) => t.unlabeled).length;
+      return {
+        status: 'ok',
+        tools,
+        coverage: {
+          detected: tools.length,
+          fromElements: tools.length + 3,
+          unlabeled,
+          uncovered: OK_COVERAGE.uncovered,
+        },
+      };
     },
     async *runIntent(text: string, signal: AbortSignal): AsyncIterable<Turn> {
       const scenario = SCENARIOS.find((s) => s.match(text.toLowerCase())) ?? DEFAULT_SCENARIO;
