@@ -1,193 +1,176 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createStubEngine } from '../engine/stub';
+import type { Turn } from '../engine/port';
+import type { FreshnessState, LocusState, PageInfo, Tool } from '../engine/types';
 import type { CapabilityState } from '../lib/capabilities';
-import { detectLanguageModel, provisionLanguageModel } from '../lib/capabilities';
+import { Button, Tab, Tabs, Toggle } from '../components/primitives';
+import { Header } from '../surfaces/Header';
+import { Chat } from '../surfaces/Chat';
+import { DENSE_TOOLS, PAGES, SPARSE_TOOLS } from '../fixtures';
 
-interface Msg {
-  who: 'you' | 'agent';
-  text: string;
-}
+type SurfaceTab = 'chat' | 'tools' | 'scan';
 
 export function App() {
-  const [origin, setOrigin] = useState('the page in front of you');
-  const [cap, setCap] = useState<CapabilityState | null>(null);
-  const [messages, setMessages] = useState<Msg[]>([]);
-  const [input, setInput] = useState('');
+  // Dev gallery: which fixture drives the panel.
+  const [dense, setDense] = useState(false);
+  const engine = useMemo(
+    () =>
+      createStubEngine({
+        page: dense ? PAGES.settings : PAGES.ci,
+        tools: dense ? DENSE_TOOLS : SPARSE_TOOLS,
+      }),
+    [dense]
+  );
+
+  const [tab, setTab] = useState<SurfaceTab>('chat');
+  const [turns, setTurns] = useState<Turn[]>([]);
   const [acting, setActing] = useState(false);
   const [status, setStatus] = useState('');
+  const [freshness, setFreshness] = useState<FreshnessState>('fresh');
+  const [locus, setLocus] = useState<LocusState>('on-device');
+  const [, setCapability] = useState<CapabilityState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const page: PageInfo = engine.page();
+  const tools: Tool[] = engine.tools();
 
   useEffect(() => {
+    let alive = true;
+    void engine.capability().then((c) => {
+      if (!alive) return;
+      setCapability(c);
+      setLocus(c.languageModel === 'unavailable' ? 'unavailable' : 'on-device');
+    });
     inputRef.current?.focus();
-    void detectLanguageModel().then(setCap);
-    try {
-      chrome.tabs?.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-        const url = tabs?.[0]?.url;
-        if (!url) return;
-        try {
-          const host = new URL(url).host;
-          if (host) setOrigin(host);
-        } catch {
-          /* chrome:// and similar have no host */
-        }
-      });
-    } catch {
-      /* chrome.tabs unavailable outside the extension */
-    }
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [engine]);
 
-  // Escape stops the loop / clears the input — interruptibility is keyboard-first
-  // and app-wide, so it lives on the document rather than a static element.
-  useEffect(() => {
-    function onDocKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Escape') return;
-      if (acting) {
-        setActing(false);
-        setStatus('Stopped.');
-        inputRef.current?.focus();
-      } else if (input) {
-        setInput('');
-        setStatus('Cleared.');
-      }
-    }
-    document.addEventListener('keydown', onDocKeyDown);
-    return () => document.removeEventListener('keydown', onDocKeyDown);
-  }, [acting, input]);
-
-  function send() {
-    const text = input.trim();
-    if (!text) return;
-    setMessages((m) => [...m, { who: 'you', text }]);
-    setInput('');
-    setActing(true);
-    setStatus('Working… (Phase 1 shell — no engine yet)');
-    window.setTimeout(() => {
-      setActing(false);
-      setStatus('');
-      setMessages((m) => [
-        ...m,
-        {
-          who: 'agent',
-          text: 'I heard you, but I have no engine yet — this is the Phase 1 build shell.',
-        },
-      ]);
-      inputRef.current?.focus();
-    }, 500);
-  }
-
-  function stop() {
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
     setActing(false);
     setStatus('Stopped.');
     inputRef.current?.focus();
-  }
+  }, []);
 
-  // Provision must run inside this click handler (a user gesture) with no await before create().
-  function downloadModel() {
-    setStatus('Downloading on-device model…');
-    provisionLanguageModel((loaded) =>
-      setStatus(`Downloading on-device model… ${Math.round(loaded * 100)}%`)
-    )
-      .then(async () => {
-        setStatus('On-device model ready.');
-        setCap(await detectLanguageModel());
-      })
-      .catch((e: unknown) => setStatus(`Download failed: ${(e as Error).message}`));
-  }
+  const send = useCallback(
+    (text: string) => {
+      const trimmed = text.trim();
+      if (!trimmed || acting) return;
+      setTab('chat');
+      setTurns((prev) => [...prev, { id: `u-${prev.length}`, kind: 'user', text: trimmed }]);
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setActing(true);
+      setStatus('Working on your device…');
+      void (async () => {
+        try {
+          for await (const turn of engine.runIntent(trimmed, controller.signal)) {
+            if (controller.signal.aborted) break;
+            setTurns((prev) => [...prev, turn]);
+          }
+        } finally {
+          if (!controller.signal.aborted) {
+            setActing(false);
+            setStatus('');
+          }
+          inputRef.current?.focus();
+        }
+      })();
+    },
+    [acting, engine]
+  );
+
+  const rescan = useCallback(() => {
+    setFreshness('scanning');
+    const controller = new AbortController();
+    void engine.scan(controller.signal).then((res) => {
+      setFreshness(res.status === 'failed' ? 'failed' : 'fresh');
+    });
+  }, [engine]);
+
+  const reverse = useCallback((turnId: string) => {
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: `rev-${turnId}`,
+        kind: 'report',
+        certainty: 'done',
+        text: 'Reversed — turned "Marketing emails" back on.',
+      },
+    ]);
+  }, []);
+
+  const choice = useCallback((picked: string) => send(picked), [send]);
+
+  // Escape stops the loop from anywhere (interruptibility).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && acting) stop();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [acting, stop]);
 
   return (
     <div className="pa">
-      <header className="pa-header">
-        <div className="pa-identity" aria-label="Current page">
-          <span className="pa-favicon" aria-hidden="true" />
-          <span className="pa-origin">{origin}</span>
-        </div>
-        <div className="pa-locus" title="Processing runs on your device">
-          <span className="pa-node" aria-hidden="true">
-            <span className="pa-node-dot" />
-          </span>
-          <span className="pa-locus-label">On your device</span>
-        </div>
-      </header>
+      <Header
+        page={page}
+        freshness={freshness}
+        locus={locus}
+        acting={acting}
+        onRescan={rescan}
+        onStop={stop}
+      />
+      <Tabs value={tab} onValueChange={(v) => setTab(v as SurfaceTab)} label="Surfaces">
+        <Tab value="chat">Chat</Tab>
+        <Tab value="tools">Tools</Tab>
+        <Tab value="scan">Scan</Tab>
+        <Tab value="profiles" disabled>
+          Profiles (Later)
+        </Tab>
+      </Tabs>
 
-      <div className="pa-capability" role="status">
-        {cap ? (
-          <>
-            <span className={`pa-dot pa-dot--${cap.languageModel}`} aria-hidden="true" />
-            <span>{cap.reason}</span>
-            {cap.languageModel === 'downloadable' && (
-              <button className="pa-link" type="button" onClick={downloadModel}>
-                Download on-device model
-              </button>
-            )}
-          </>
-        ) : (
-          <span>Checking on-device availability…</span>
+      <div className="pa-surface">
+        {tab === 'chat' && (
+          <Chat
+            page={page}
+            tools={tools}
+            turns={turns}
+            acting={acting}
+            status={status}
+            inputRef={inputRef}
+            onSend={send}
+            onStop={stop}
+            onReverse={reverse}
+            onChoice={choice}
+          />
+        )}
+        {tab === 'tools' && (
+          <p className="pa-placeholder">The browsable tool-set (Tools) lands in Phase 5.</p>
+        )}
+        {tab === 'scan' && (
+          <p className="pa-placeholder">The detection view (Scan / Gen) lands in Phase 5.</p>
         )}
       </div>
 
-      <div className="pa-tabs" role="tablist" aria-label="Surfaces">
-        <button role="tab" aria-selected="true" className="pa-tab is-active">
-          Chat
-        </button>
-        <button role="tab" aria-selected="false" className="pa-tab">
-          Tools
-        </button>
-        <button role="tab" aria-selected="false" className="pa-tab">
-          Scan
-        </button>
-        <button role="tab" aria-selected="false" className="pa-tab pa-tab--later" disabled>
-          Profiles <span className="pa-later">Later</span>
-        </button>
-      </div>
-
-      <main className="pa-body" role="main">
-        <h1 className="pa-hello-title">PageAgent — Phase 1 build</h1>
-        <p className="pa-hello-lead">
-          Now a bundled React + TypeScript side panel. The engine, real surfaces, and safety layer
-          arrive in later phases.
-        </p>
-        <div className="pa-log" role="log" aria-live="polite" aria-label="Session log">
-          {messages.map((m, i) => (
-            <div key={i} className={`pa-msg pa-msg--${m.who}`}>
-              <b>{m.who === 'you' ? 'You' : 'PageAgent'}:</b> {m.text}
-            </div>
+      <details className="pa-gallery">
+        <summary>Screen gallery (dev)</summary>
+        <div className="pa-gallery__row">
+          <Toggle checked={dense} onCheckedChange={setDense} label="Dense page (50–100 tools)" />
+          <span className="pa-gallery__label">Locus:</span>
+          {(['on-device', 'unavailable', 'off-device'] as const).map((l) => (
+            <Button key={l} variant={locus === l ? 'primary' : 'ghost'} onClick={() => setLocus(l)}>
+              {l}
+            </Button>
           ))}
+          <Button variant="ghost" onClick={() => setTurns([])}>
+            Clear transcript
+          </Button>
         </div>
-      </main>
-
-      <footer className="pa-footer">
-        <form
-          className="pa-composer"
-          onSubmit={(e) => {
-            e.preventDefault();
-            send();
-          }}
-        >
-          <label className="visually-hidden" htmlFor="composer-input">
-            Tell this page what you want
-          </label>
-          <input
-            id="composer-input"
-            ref={inputRef}
-            className="pa-input"
-            type="text"
-            autoComplete="off"
-            placeholder="Tell this page what you want…"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-          />
-          {acting && (
-            <button type="button" className="pa-btn pa-btn--stop" onClick={stop}>
-              Stop
-            </button>
-          )}
-          <button type="submit" className="pa-btn pa-btn--send">
-            Send
-          </button>
-        </form>
-        <p className="pa-status" role="status">
-          {status}
-        </p>
-      </footer>
+      </details>
     </div>
   );
 }

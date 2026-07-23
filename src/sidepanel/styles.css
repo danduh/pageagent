@@ -1,7 +1,7 @@
-/* PageAgent side panel — component styles. All color / focus / motion primitives
-   come from the semantic tokens in ../styles/tokens.css (imported first in main.tsx);
-   this file references only those aliases. System font stack for now — the inlined
-   type system lands in Phase 2 (#21). */
+/* PageAgent side panel — shell layout only. Colors/type/motion come from the semantic
+   tokens in ../styles/tokens.css; the Header and Chat surfaces bring their own CSS.
+   This file owns the persistent three-zone column, the tab bar spacing, and the
+   dev-only screen gallery. */
 
 * {
   box-sizing: border-box;
@@ -20,6 +20,8 @@ body {
   font-size: var(--pa-text-base);
   line-height: var(--pa-leading);
 }
+
+/* Persistent three-zone column: Header · tab bar · surface body · (dev gallery). */
 .pa {
   display: flex;
   flex-direction: column;
@@ -35,208 +37,45 @@ body {
   white-space: nowrap;
 }
 
-.pa-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
+/* Tab bar (the Tabs primitive renders role=tablist) sits under the header. */
+.pa > [role='tablist'] {
+  padding: 0 var(--pa-space-2);
   border-bottom: 1px solid var(--line);
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-}
-.pa-identity {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
-.pa-favicon {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  background: var(--line);
   flex: none;
 }
-.pa-origin {
-  color: var(--muted);
-  font-size: 12.5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.pa-locus {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-}
-.pa-node {
-  width: 16px;
-  height: 16px;
-  border-radius: 5px;
-  border: 1.5px solid var(--brand-dim);
-  display: grid;
-  place-items: center;
-}
-.pa-node-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 2px;
-  background: var(--brand);
-}
-.pa-locus-label {
-  font-size: 12px;
-}
 
-.pa-capability {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  font-size: 12px;
-  color: var(--muted);
-  border-bottom: 1px solid var(--line);
-}
-.pa-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  background: var(--muted);
-}
-.pa-dot--available {
-  background: var(--safe);
-}
-.pa-dot--downloadable,
-.pa-dot--downloading {
-  background: var(--caution);
-}
-.pa-dot--unavailable {
-  background: var(--halt);
-}
-.pa-link {
-  appearance: none;
-  border: none;
-  background: none;
-  color: var(--brand);
-  font: inherit;
-  text-decoration: underline;
-  cursor: pointer;
-  padding: 4px;
-  min-height: 32px;
-}
-
-.pa-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 10px 0;
-  border-bottom: 1px solid var(--line);
-}
-.pa-tab {
-  appearance: none;
-  border: none;
-  background: transparent;
-  color: var(--muted);
-  font: inherit;
-  font-size: 13px;
-  padding: 8px 12px;
-  min-height: 44px;
-  border-radius: 6px 6px 0 0;
-  cursor: pointer;
-}
-.pa-tab.is-active {
-  color: var(--ink);
-  box-shadow: inset 0 -2px 0 var(--brand);
-}
-.pa-tab--later {
-  cursor: not-allowed;
-}
-.pa-later {
-  font-size: 10px;
-  color: var(--muted);
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 1px 6px;
-  margin-left: 4px;
-}
-
-.pa-body {
+.pa-surface {
   flex: 1 1 auto;
-  overflow: auto;
-  padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-.pa-hello-title {
-  font-family: var(--pa-font-display);
-  font-size: var(--pa-text-lg);
-  font-weight: 700;
-  letter-spacing: var(--pa-tracking-tight);
-}
-.pa-hello-lead {
-  color: var(--muted);
-}
-.pa-log {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.pa-msg {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 8px 10px;
-  font-size: 13px;
+  min-height: 0;
 }
 
-.pa-footer {
+.pa-placeholder {
+  color: var(--muted);
+  padding: var(--pa-space-5) var(--pa-space-4);
+  font-size: var(--pa-text-sm);
+}
+
+/* Dev-only screen gallery — never part of the shipped chrome's visual weight. */
+.pa-gallery {
+  flex: none;
   border-top: 1px solid var(--line);
-  padding: 10px 12px 12px;
-  background: color-mix(in srgb, var(--surface) 70%, transparent);
-}
-.pa-composer {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-.pa-input {
-  flex: 1 1 auto;
-  min-height: 44px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--ink);
-  border-radius: 8px;
-  padding: 0 12px;
-  font: inherit;
-}
-.pa-input::placeholder {
+  background: var(--surface-2);
+  font-size: var(--pa-text-xs);
   color: var(--muted);
 }
-.pa-btn {
-  appearance: none;
-  border: 1px solid transparent;
-  font: inherit;
-  font-weight: 600;
-  min-height: 44px;
-  min-width: 44px;
-  padding: 0 14px;
-  border-radius: 8px;
+.pa-gallery > summary {
+  padding: var(--pa-space-2) var(--pa-space-4);
   cursor: pointer;
 }
-.pa-btn--send {
-  background: var(--brand);
-  color: #04110f;
+.pa-gallery__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--pa-space-2);
+  padding: 0 var(--pa-space-4) var(--pa-space-3);
 }
-.pa-btn--stop {
-  background: transparent;
-  color: var(--ink);
-  border-color: var(--line);
-}
-.pa-status {
-  margin-top: 6px;
-  min-height: 16px;
-  font-size: 12px;
+.pa-gallery__label {
   color: var(--muted);
 }

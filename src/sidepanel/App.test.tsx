@@ -6,7 +6,7 @@ import { App } from './App';
 describe('App (side panel)', () => {
   it('renders the shell', () => {
     const { getByRole, getByPlaceholderText } = render(<App />);
-    getByRole('heading', { name: /PageAgent/i }); // throws if absent
+    getByRole('heading', { name: /tell this page/i }); // page-aware empty-state title
     getByPlaceholderText(/tell this page/i);
     getByRole('tab', { name: /Chat/i });
   });
