@@ -30,6 +30,16 @@ The review judged the base plan honest and strong; its fixes were about **derisk
 9. **Scan-performance budget on large real pages** → added to Step 7.3 acceptance.
 10. **Design-file true-up is non-blocking for the Scope-A ship** → stated at the Phase 6 milestone.
 
+## Phase 0 spike findings applied (2026-07-23)
+
+Both derisking spikes ran (see `spikes/FINDINGS.md`). Environment: embedded Chrome 148 / Electron — a **strong directional signal, not the final side-panel verdict**. Resulting refinements:
+
+- **`Element-handle strategy` → RESOLVED (Spike B).** `WeakRef` goes stale; DOM index breaks under reorder; only a stable `id` and the accessible-name/text survived on their own merits. Adopt a **multi-signal fingerprint** `{role + accessible-name + type + nearby-text/group-ordinal + stable-id-if-present + WeakRef}` — primary = role+accessible-name re-query, WeakRef = liveness-negative only, positional never acts, id confirmatory — with a mandatory match-verification gate. Step-level refinements: **3.0** types re-resolution as a four-outcome union `resolved-verified | not-found | ambiguous | stale` (not a boolean); **8.2** keys staleness on fingerprint mismatch (not node existence); **8.4** re-checks role+name+type+visible+enabled against the stored fingerprint; **8.5** DECLINES on not-found/ambiguous/stale (ambiguity is a first-class decline); **D2** spoken anchor = role+accessible-name+nearby-text/ordinal with a spoken decline on ambiguity; **D11** = decline-on-ambiguity.
+- **`Prompt-API host document` → still OPEN, provisional lean: the side panel (Spike A).** Chrome 148 exposes `LanguageModel` as a function with `availability() === "downloadable"`, but `create()` is **user-gesture-gated** and did not run, and the context wasn't the real side panel. **Step 1.5** makes model-download an acceptance criterion: split passive `availability()` detect from a user-gesture `create({ monitor })` provision (no preceding `await` — an await can consume the activation); **Step 7.1** renders `downloadable` as an *actionable* state, distinct from `downloading`/`unavailable`.
+- **Native tool-calling (Step 9.2 / docs/07 §2 / Risk 5) → FLAGGED FOR RE-TEST, not flipped.** Tool-calling was **not** exercised (`create()` never ran); the capability page's "Stable" is unverified. The manual capped `INTENT_SCHEMA` loop stays committed until a live bake-off (decision rule fixed in advance: flip only if materially more reliable **and** stable across ≥2 Chrome versions; any change scoped to the model-output→intent parse seam only). Structured JSON output ≠ tool-calling and is tested independently.
+- **One definitive follow-up** (needs the real extension side panel on the user's Chrome + Claude-in-Chrome connected): fire `create()` from a click handler; run the native-tool-calling vs. `INTENT_SCHEMA` bake-off + an independent structured-output test; record download UX. Tracked on #5. Spike B edge cases (decline-on-ambiguity vs real data, shadow/virtualized/canvas/cross-route, real-framework id stability, re-query cost) tracked on #6.
+
+
 ---
 
 ## Scope & how to read this plan
@@ -513,9 +523,9 @@ Two scope options, delivered as **one continuous roadmap** — Scope A comes fir
 - **D6** — processing-locus semantics for mixed (voice) turns: compound reasoning-locus + audio-egress marker vs. most-exposed-path label (Step 5.8).
 - **D7 / D10** — reversibility-confidence-bar threshold + auto-execution posture, and the Tier-2 hard-stop set membership (Step 8.3).
 - **D11** — low-confidence-scan behavior for ambiguous destructive candidates (working position: list honestly but decline to act, route to Execute).
-- **Register-vs-internal-registry** — is page-surface `document.modelContext` registration required, or is the internal registry the primary path (reading site-declared tools only)? Plan builds the registry as the reliable base.
-- **Prompt-API host document** — confirm `LanguageModel` is actually exposed in the MV3 side-panel document; if not, the brain moves to an offscreen document or the content script (changes the Step 7.2 bridge topology).
-- **Element-handle strategy** — path/attribute fingerprint vs. live `WeakRef` vs. re-query heuristic for stable re-resolution across SPA re-renders (core of Steps 7.3/8.2/8.4).
+- **Register-vs-internal-registry** — internal registry is the **primary** path (Phase 0 Spike B: `document.modelContext` absent; the MAIN-world read path itself worked). Re-verify page-surface `document.modelContext` presence in the real host under the origin trial before depending on registration (Steps 7.2/8.1).
+- **Prompt-API host document** — **OPEN, provisional lean: the side panel** (Phase 0 Spike A: `LanguageModel` present + `downloadable` on Chrome 148, but `create()` is gesture-gated and untested in the real side panel). Confirm via the #5 follow-up; if `create()` fails there, the brain moves to an offscreen document / content script (changes the Step 7.2 bridge topology).
+- **Element-handle strategy** — **RESOLVED (Phase 0 Spike B):** multi-signal fingerprint (role+accessible-name primary; WeakRef liveness-negative only; positional never acts; stable-id confirmatory) + a four-outcome verification gate + decline-on-ambiguity. See the *Phase 0 spike findings applied* section and `spikes/FINDINGS.md`.
 - **MVP target sites** — which pages the engine must be reliable on first (simple form-driven vs. a few high-value authenticated vs. breadth) — bounds the honest reliability claim.
 - **Cloud endpoint/provider** and whether cloud fallback ships in MVP at all (Step 10.3).
 - **Font payload budget (REQ-PERF)** — a hard KB target to judge the type-system + Hyperlegible steps against "lean."
