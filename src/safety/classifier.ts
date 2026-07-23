@@ -6,7 +6,7 @@
 // Tier-2 hard-stop class (pay/send money, sign out, delete/close account, irreversible
 // send) can never be silenced by any trust setting.
 
-import type { GatePreview, RiskTier } from '../engine/types';
+import type { GatePreview, RiskTier, Tool } from '../engine/types';
 
 const TIER2: RegExp[] = [
   /\bpay\b/,
@@ -86,5 +86,31 @@ export function buildGatePreview(text: string, tier: 1 | 2): GatePreview {
     proceedLabel: 'Cancel subscription',
     cancelLabel: 'Don’t cancel',
     locatable: true,
+  };
+}
+
+/**
+ * Build a Confirm-gate preview for running one tool by hand (Execute, Step 5.5).
+ * An unlabeled tool can't be located reliably, so the gate DECLINES rather than
+ * proceeding (locate-or-decline). Only called for risk >= 1 tools.
+ */
+export function previewForTool(tool: Tool, value?: string): GatePreview {
+  const tier: 1 | 2 = tool.risk === 2 ? 2 : 1;
+  const hasValue = Boolean(value && value.trim().length > 0);
+  return {
+    tier,
+    verb: tool.actionType,
+    toolName: tool.id,
+    targetLabel: `"${tool.name}" (${tool.provenance})`,
+    value: hasValue ? value : undefined,
+    consequence:
+      tier === 2
+        ? 'This is a high-consequence action and can’t be undone from here.'
+        : 'This may be hard to undo.',
+    provenance: `Because you ran "${tool.name}" from the Tools list.`,
+    reacknowledge: tier === 2 ? tool.name : undefined,
+    proceedLabel: tool.name,
+    cancelLabel: 'Don’t run it',
+    locatable: !tool.unlabeled,
   };
 }

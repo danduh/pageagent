@@ -4,7 +4,14 @@
 
 import type { RefObject } from 'react';
 import type { Turn } from '../engine/port';
-import type { FreshnessState, GatePreview, LocusState, PageInfo, Tool } from '../engine/types';
+import type {
+  FreshnessState,
+  GatePreview,
+  LocusState,
+  PageInfo,
+  ScanResult,
+  Tool,
+} from '../engine/types';
 
 export interface HeaderProps {
   page: PageInfo;
@@ -45,4 +52,27 @@ export interface LocusProps {
   /** Later (voice): audio is leaving the device for cloud STT — suppresses the resting
    *  affordance and lights an always-on audio-egress marker naming what left. */
   audioEgress?: boolean;
+}
+
+export interface ToolsProps {
+  tools: Tool[];
+  /** Run one tool by hand (Execute). value is the verbatim input for type/choose tools;
+   *  App classifies risk and routes destructive runs through the Confirm-gate. */
+  onRun: (tool: Tool, value?: string) => void;
+}
+
+export interface ScanProps {
+  freshness: FreshnessState;
+  /** The most recent scan result (coverage-honesty + element→Tool mapping); null before first scan. */
+  result: ScanResult | null;
+  onRescan: () => void;
+}
+
+export interface AvailabilityProps {
+  /** Honest capability reason, e.g. "On-device model unavailable". */
+  reason: string;
+  /** Whether the labeled cloud-fallback opt-in is offered. */
+  cloudOffered: boolean;
+  /** Explicit, per-use opt-in (shown only after the trade is stated). */
+  onUseCloudOnce: () => void;
 }

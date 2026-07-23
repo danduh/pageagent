@@ -1,0 +1,480 @@
+/* SCAN/GEN surface styles (Plan Step 5.6).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css — no
+ * raw hex or bare color keyword appears here (the only colors are token references and
+ * token-based color-mix), so light + dark + high-contrast follow the token layer for
+ * free. Focus is handled globally by tokens.css `:focus-visible` and is never
+ * suppressed. Interactive targets are ≥44×44 CSS px. Class names are `psg-*`
+ * (PageAgent-Scan-Gen) so they never collide with `.pa-*` (side panel), `.pak-*`
+ * (primitives), `.pac-*` (Chat), `.pah-*` (Header) or `.pcg-*` (Confirm-gate).
+ *
+ * Honesty discipline (design contract): the scanning indicator is a QUALITATIVE read
+ * pass, never a fabricated percentage; the action-type tick is a functional cue whose
+ * meaning is always ALSO carried in the derivation text; no "protected"/reliability
+ * claim appears anywhere. Brand (Halide) is the on-device instrument doing the reading
+ * — an identity signal, never a success/safe color.
+ */
+
+/* Visually-hidden helper — kept local so this surface doesn't depend on load order. */
+.psg__vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+ * Shell — a column: an optional header bar over a scrolling content region.
+ * ======================================================================== */
+.psg {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+
+.psg__bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.psg__heading {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-lg);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+.psg__rescan {
+  flex: none;
+}
+
+.psg__content {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--pa-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-4);
+}
+
+/* ==========================================================================
+ * A) Empty state + D) Failed state — centered, single focal CTA.
+ * ======================================================================== */
+.psg__empty,
+.psg__failed {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-5) var(--pa-space-4);
+  text-align: center;
+}
+.psg__empty-icon {
+  color: var(--muted);
+}
+.psg__empty-title,
+.psg__failed-title {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-xl);
+  line-height: 1.2;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+.psg__empty-text,
+.psg__failed-help {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--muted);
+  font-size: var(--pa-text-sm);
+}
+
+/* The honest failure reason — calm, not an alarm. A neutral panel, never the halt trio. */
+.psg__failed-reason {
+  margin: 0;
+  max-width: 44ch;
+  padding: var(--pa-space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* No-tools note within an otherwise-successful scan. */
+.psg__empty-note {
+  margin: 0;
+  padding: var(--pa-space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  color: var(--muted);
+  font-size: var(--pa-text-sm);
+}
+
+/* ==========================================================================
+ * B) Scanning — the Halide READ-LINE over a stacked-control wireframe.
+ * ======================================================================== */
+.psg__scanning {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+}
+.psg__scanning-text {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-lg);
+  font-weight: 600;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+.psg__scanning-sub {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--pa-text-sm);
+}
+
+/* The wireframe: a small frame of placeholder controls the read-line sweeps across. */
+.psg__wire {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+  padding: var(--pa-space-4);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+}
+.psg__wire-bar {
+  height: 12px;
+  width: var(--psg-bar-w, 80%);
+  border-radius: var(--pa-radius-pill);
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  /* Resolve ONCE, in sequence, then hold (fill-mode: both). The bars settle as the
+     read-line passes — a bounded reveal, not a looping fake-progress meter. */
+  animation: psg-resolve var(--pa-dur-slow) var(--pa-ease) var(--psg-bar-delay, 0ms) 1 both;
+}
+
+/* The read-line itself — a thin Halide sweep with a soft token-based glow. It loops to
+   show the read is ONGOING (there is no known percentage to fill), never a completion
+   bar. Brand here = the on-device instrument reading the page. */
+.psg__readline {
+  position: absolute;
+  left: var(--pa-space-3);
+  right: var(--pa-space-3);
+  top: 0;
+  height: 2px;
+  border-radius: var(--pa-radius-pill);
+  background: var(--brand);
+  box-shadow: 0 0 10px 1px color-mix(in srgb, var(--brand) 45%, transparent);
+  animation: psg-readline 1.8s var(--pa-ease-firm) infinite;
+}
+
+@keyframes psg-resolve {
+  from {
+    background: var(--surface-2);
+    border-color: var(--line);
+    opacity: 0.55;
+  }
+  to {
+    background: var(--muted);
+    border-color: var(--muted);
+    opacity: 1;
+  }
+}
+@keyframes psg-readline {
+  0% {
+    top: 0;
+    opacity: 0.25;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    top: calc(100% - 2px);
+    opacity: 0.25;
+  }
+}
+
+/* ==========================================================================
+ * C) Coverage-honesty summary.
+ * ======================================================================== */
+.psg__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+}
+.psg__summary-line {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--pa-text-base);
+  overflow-wrap: anywhere;
+}
+.psg__summary-line strong {
+  font-weight: 700;
+}
+/* The unlabeled clause — honest, but quieter than the headline count. */
+.psg__summary-extra {
+  color: var(--muted);
+}
+
+.psg__note {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-2) var(--pa-space-3);
+  background: var(--caution-tint);
+  border: 1px solid var(--caution);
+  border-radius: var(--pa-radius);
+}
+.psg__note-text {
+  flex: 1 1 12ch;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--pa-text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* "Couldn't cover reliably" — named honestly, set apart as a bordered aside. */
+.psg__uncovered {
+  padding-left: var(--pa-space-3);
+  border-left: 2px solid var(--line);
+}
+.psg__uncovered-title {
+  margin: 0 0 var(--pa-space-1);
+  font-size: var(--pa-text-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.psg__uncovered-list {
+  margin: 0;
+  padding-left: var(--pa-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+}
+.psg__uncovered-item {
+  color: var(--muted);
+  font-size: var(--pa-text-sm);
+  overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+ * C) Element→Tool inspection list.
+ * ======================================================================== */
+.psg__tools-title {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-base);
+  font-weight: 600;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--muted);
+}
+.psg__tools {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+}
+
+.psg-tool {
+  position: relative;
+  padding: var(--pa-space-3) var(--pa-space-3) var(--pa-space-3) var(--pa-space-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+}
+/* Functional action-type tick — four distinct, non-safety hues (mirrors the Card
+   primitive), so it never falsely reads as Safe/Caution/Halt. The action is always
+   ALSO named in the derivation text below. */
+.psg-tool__tick {
+  position: absolute;
+  left: 0;
+  top: var(--pa-space-2);
+  bottom: var(--pa-space-2);
+  width: 3px;
+  border-radius: var(--pa-radius-pill);
+  background: var(--muted);
+}
+.psg-tool--click .psg-tool__tick {
+  background: var(--brand);
+}
+.psg-tool--type .psg-tool__tick {
+  background: var(--filament);
+}
+.psg-tool--choose .psg-tool__tick {
+  background: var(--offshore);
+}
+.psg-tool--follow-link .psg-tool__tick {
+  background: var(--ink);
+}
+
+.psg-tool__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  min-width: 0;
+}
+.psg-tool__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+}
+.psg-tool__name {
+  font-size: var(--pa-text-base);
+  font-weight: 600;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+/* Unlabeled: the fixture name is an honest DESCRIPTION, not a real label — set it apart
+   so it never reads as a name the page actually gave. */
+.psg-tool__name.is-unlabeled {
+  font-weight: 400;
+  font-style: italic;
+  color: var(--muted);
+}
+
+/* Derivation line — the honest "how I got this": origin · action · page-provenance. */
+.psg-tool__deriv {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+  font-size: var(--pa-text-sm);
+  color: var(--muted);
+}
+.psg-tool__origin {
+  font-weight: 600;
+}
+.psg-tool__sep {
+  color: var(--line);
+}
+.psg-tool__act {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+}
+.psg-tool__act-icon {
+  color: var(--muted);
+}
+.psg-tool__prov {
+  font-family: var(--pa-font-mono);
+  overflow-wrap: anywhere;
+}
+
+/* On-demand selector reveal — closed by default; the resting list stays calm. */
+.psg-tool__details {
+  font-size: var(--pa-text-sm);
+}
+.psg-tool__summary {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+  min-height: 44px;
+  color: var(--brand-ink);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+.psg-tool__summary::-webkit-details-marker {
+  display: none;
+}
+.psg-tool__chev {
+  flex: none;
+  transition: transform var(--pa-dur-fast) var(--pa-ease);
+}
+.psg-tool__details[open] .psg-tool__chev {
+  transform: rotate(90deg);
+}
+.psg-tool__reveal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  margin-top: var(--pa-space-1);
+  padding: var(--pa-space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+}
+.psg-tool__reveal-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+}
+.psg-tool__reveal-label {
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+.psg-tool__code {
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-xs);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* ==========================================================================
+ * Reduced motion — the read-line stops sweeping; the wireframe rests as calm,
+ * un-read placeholders and the role="status" text ("Reading the page…") carries
+ * the working state on its own. No motion is required to understand the state.
+ * ======================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .psg__readline {
+    display: none;
+  }
+  .psg__wire-bar {
+    opacity: 1;
+    background: var(--surface-2);
+    border-color: var(--line);
+  }
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — meaning is always in text; these only
+ * keep the non-text affordances visible (box-shadow glow is dropped by the mode).
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .psg-tool__tick,
+  .psg__readline {
+    background: CanvasText;
+  }
+  .psg__wire-bar {
+    border-color: CanvasText;
+  }
+  .psg__note,
+  .psg-tool__reveal {
+    border-color: CanvasText;
+  }
+}

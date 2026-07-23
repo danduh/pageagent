@@ -1,19 +1,28 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createStubEngine } from '../engine/stub';
 import type { Turn } from '../engine/port';
-import type { FreshnessState, GatePreview, LocusState, PageInfo, Tool } from '../engine/types';
+import type {
+  FreshnessState,
+  GatePreview,
+  LocusState,
+  PageInfo,
+  ScanResult,
+  Tool,
+} from '../engine/types';
 import type { CapabilityState } from '../lib/capabilities';
 import { Button, Tab, Tabs, Toggle } from '../components/primitives';
 import { Header } from '../surfaces/Header';
 import { Chat } from '../surfaces/Chat';
 import { ConfirmGate } from '../surfaces/ConfirmGate';
-import { buildGatePreview, classifyTier } from '../safety/classifier';
+import { ToolsSurface } from '../surfaces/ToolsSurface';
+import { ScanGen } from '../surfaces/ScanGen';
+import { AvailabilityBanner } from '../surfaces/AvailabilityBanner';
+import { buildGatePreview, classifyTier, previewForTool } from '../safety/classifier';
 import { DENSE_TOOLS, PAGES, SPARSE_TOOLS } from '../fixtures';
 
 type SurfaceTab = 'chat' | 'tools' | 'scan';
 
 export function App() {
-  // Dev gallery: which fixture drives the panel.
   const [dense, setDense] = useState(false);
   const engine = useMemo(
     () =>
@@ -29,7 +38,9 @@ export function App() {
   const [acting, setActing] = useState(false);
   const [status, setStatus] = useState('');
   const [freshness, setFreshness] = useState<FreshnessState>('fresh');
+  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [locus, setLocus] = useState<LocusState>('on-device');
+  const [cloudOnce, setCloudOnce] = useState(false);
   const [pendingGate, setPendingGate] = useState<GatePreview | null>(null);
   const [, setCapability] = useState<CapabilityState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -37,6 +48,7 @@ export function App() {
 
   const page: PageInfo = engine.page();
   const tools: Tool[] = engine.tools();
+  const degraded = locus === 'unavailable' && !cloudOnce;
 
   useEffect(() => {
     let alive = true;
@@ -44,6 +56,10 @@ export function App() {
       if (!alive) return;
       setCapability(c);
       setLocus(c.languageModel === 'unavailable' ? 'unavailable' : 'on-device');
+    });
+    // Prime the Scan surface with an initial detection.
+    void engine.scan().then((res) => {
+      if (alive) setScanResult(res);
     });
     inputRef.current?.focus();
     return () => {
@@ -64,14 +80,11 @@ export function App() {
       if (!trimmed || acting || pendingGate) return;
       setTab('chat');
       setTurns((prev) => [...prev, { id: `u-${prev.length}`, kind: 'user', text: trimmed }]);
-
-      // Reversibility ladder: Tier 1/2 route to the Confirm-gate; Tier 0 flows.
       const tier = classifyTier(trimmed);
       if (tier === 1 || tier === 2) {
         setPendingGate(buildGatePreview(trimmed, tier));
         return;
       }
-
       const controller = new AbortController();
       abortRef.current = controller;
       setActing(true);
@@ -98,9 +111,33 @@ export function App() {
     setFreshness('scanning');
     const controller = new AbortController();
     void engine.scan(controller.signal).then((res) => {
+      setScanResult(res);
       setFreshness(res.status === 'failed' ? 'failed' : 'fresh');
     });
   }, [engine]);
+
+  // Execute: run one tool by hand. Destructive (risk ≥ 1) routes through the gate;
+  // a reversible tool flows and reports. The report lands in the transcript (traceable).
+  const runTool = useCallback(
+    (tool: Tool, value?: string) => {
+      if (pendingGate) return;
+      if (tool.risk >= 1) {
+        setPendingGate(previewForTool(tool, value));
+        return;
+      }
+      setTab('chat');
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: `x-${prev.length}`,
+          kind: 'report',
+          certainty: 'done',
+          text: `Done — ran "${tool.name}"${value ? ` with "${value}"` : ''}.`,
+        },
+      ]);
+    },
+    [pendingGate]
+  );
 
   const reverse = useCallback((turnId: string) => {
     setTurns((prev) => [
@@ -116,11 +153,10 @@ export function App() {
 
   const choice = useCallback((picked: string) => send(picked), [send]);
 
-  // Approve resolves the gate → an observed-result report. Destructive actions carry
-  // no one-tap reverse (they're not reversible — that's why they gated).
   const approveGate = useCallback(() => {
     setPendingGate((g) => {
       if (g) {
+        setTab('chat');
         setTurns((prev) => [
           ...prev,
           {
@@ -150,7 +186,12 @@ export function App() {
     inputRef.current?.focus();
   }, []);
 
-  // Escape stops the loop from anywhere (the Confirm-gate owns its own Escape→cancel).
+  // Cloud fallback: an explicit, per-use opt-in. It flips the locus off-device.
+  const useCloudOnce = useCallback(() => {
+    setCloudOnce(true);
+    setLocus('off-device');
+  }, []);
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape' && acting && !pendingGate) stop();
@@ -178,27 +219,37 @@ export function App() {
         </Tab>
       </Tabs>
 
+      {degraded ? (
+        <AvailabilityBanner
+          reason="On-device AI is unavailable in this browser"
+          cloudOffered
+          onUseCloudOnce={useCloudOnce}
+        />
+      ) : null}
+
       <div className="pa-surface">
-        {tab === 'chat' && (
-          <Chat
-            page={page}
-            tools={tools}
-            turns={turns}
-            acting={acting}
-            status={status}
-            inputRef={inputRef}
-            onSend={send}
-            onStop={stop}
-            onReverse={reverse}
-            onChoice={choice}
-          />
-        )}
-        {tab === 'tools' && (
-          <p className="pa-placeholder">The browsable tool-set (Tools) lands in Phase 5.</p>
-        )}
-        {tab === 'scan' && (
-          <p className="pa-placeholder">The detection view (Scan / Gen) lands in Phase 5.</p>
-        )}
+        {tab === 'chat' &&
+          (degraded ? (
+            <p className="pa-placeholder">
+              Chat needs the on-device model. You can still browse the Tools found here, run one,
+              and inspect the Scan — see the banner above.
+            </p>
+          ) : (
+            <Chat
+              page={page}
+              tools={tools}
+              turns={turns}
+              acting={acting}
+              status={status}
+              inputRef={inputRef}
+              onSend={send}
+              onStop={stop}
+              onReverse={reverse}
+              onChoice={choice}
+            />
+          ))}
+        {tab === 'tools' && <ToolsSurface tools={tools} onRun={runTool} />}
+        {tab === 'scan' && <ScanGen freshness={freshness} result={scanResult} onRescan={rescan} />}
       </div>
 
       {pendingGate ? (
@@ -216,7 +267,14 @@ export function App() {
           <Toggle checked={dense} onCheckedChange={setDense} label="Dense page (50–100 tools)" />
           <span className="pa-gallery__label">Locus:</span>
           {(['on-device', 'unavailable', 'off-device'] as const).map((l) => (
-            <Button key={l} variant={locus === l ? 'primary' : 'ghost'} onClick={() => setLocus(l)}>
+            <Button
+              key={l}
+              variant={locus === l ? 'primary' : 'ghost'}
+              onClick={() => {
+                setLocus(l);
+                setCloudOnce(false);
+              }}
+            >
               {l}
             </Button>
           ))}
@@ -229,14 +287,6 @@ export function App() {
           </Button>
           <Button variant="ghost" onClick={() => setPendingGate(buildGatePreview('pay $500', 2))}>
             Tier 2
-          </Button>
-          <Button
-            variant="ghost"
-            onClick={() =>
-              setPendingGate({ ...buildGatePreview('cancel subscription', 1), unsure: true })
-            }
-          >
-            Unsure
           </Button>
           <Button
             variant="ghost"
