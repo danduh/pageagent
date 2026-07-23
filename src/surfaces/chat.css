@@ -1,0 +1,329 @@
+/* Chat surface styles (Plan Steps 3.3–3.5).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css —
+ * no raw hex or bare color keyword appears here, so light + dark + high-contrast all
+ * follow the token layer for free. Focus is handled globally by tokens.css
+ * `:focus-visible` and is never suppressed. Interactive targets are ≥44×44 CSS px.
+ * Class names are `pac-*` (PageAgent-Chat) so they never collide with the side
+ * panel's `.pa-*` rules or the primitives' `.pak-*` rules.
+ */
+
+/* Visually-hidden helper — kept local so this surface doesn't depend on load order. */
+.pac__vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+ * Shell — a column: a scrolling conversation region over a pinned footer.
+ * ======================================================================== */
+.pac {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+.pac__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--pa-space-4);
+}
+
+/* ==========================================================================
+ * A) Empty state — calm, page-aware.
+ * ======================================================================== */
+.pac__empty {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-4);
+  max-width: 46ch;
+}
+.pac__empty-origin {
+  margin: 0;
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-xs);
+  color: var(--muted);
+  word-break: break-word;
+}
+.pac__empty-title {
+  margin: 0;
+  font-family: var(--pa-font-display);
+  font-size: var(--pa-text-xl);
+  line-height: 1.2;
+  letter-spacing: var(--pa-tracking-tight);
+  color: var(--ink);
+}
+.pac__beats {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--pa-space-4);
+  border-left: 2px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-3);
+}
+.pac__beat {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--pa-space-2);
+  font-size: var(--pa-text-base);
+  color: var(--ink);
+}
+.pac__beat-icon {
+  flex: none;
+  margin-top: 1px;
+  /* Brand = identity/signal — here it marks the on-device instrument, not success. */
+  color: var(--brand);
+}
+.pac__examples {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+}
+.pac__examples-label {
+  margin: 0;
+  font-size: var(--pa-text-sm);
+  color: var(--muted);
+}
+.pac__example-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+}
+
+/* ==========================================================================
+ * B) Transcript — role="log". Turns stack; each is a self-contained unit.
+ * ======================================================================== */
+.pac__log {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-4);
+}
+.pac__turn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  max-width: 92%;
+}
+.pac__turn--user {
+  align-self: flex-end;
+  align-items: flex-end;
+}
+.pac__turn--agent,
+.pac__turn--page {
+  align-self: flex-start;
+}
+
+/* Per-turn header: who is speaking / where content came from, + optional cloud tag. */
+.pac__head {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  flex-wrap: wrap;
+}
+.pac__head--user {
+  justify-content: flex-end;
+}
+.pac__sender,
+.pac__source {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+  color: var(--muted);
+}
+.pac__source-icon {
+  color: var(--filament);
+}
+
+/* Your request — a filled bubble, right-aligned. Neutral surface (brand stays an
+ * identity/signal color, never a chat-bubble fill). */
+.pac__bubble {
+  margin: 0;
+  padding: var(--pa-space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  border-bottom-right-radius: var(--pa-radius-sm);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Agent prose — plain, left-aligned, no container. */
+.pac__prose {
+  margin: 0;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* Read-only page content — an INERT, walled blockquote. Mono + filament so it can
+ * never be mistaken for a command the user typed or an action the agent took. */
+.pac__quote {
+  margin: 0;
+  padding: var(--pa-space-3);
+  background: var(--filament-tint);
+  border: 1px solid var(--filament);
+  border-left-width: 3px;
+  border-radius: var(--pa-radius);
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-sm);
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Report-back on the certainty ladder — accent + tinted surface reinforce the WORD in
+ * the Badge; meaning never rides on color alone. */
+.pac__report {
+  padding: var(--pa-space-3);
+  border: 1px solid var(--line);
+  border-left-width: 3px;
+  border-radius: var(--pa-radius);
+  background: var(--surface);
+}
+.pac__report--safe {
+  background: var(--safe-tint);
+  border-left-color: var(--safe);
+}
+.pac__report--caution {
+  background: var(--caution-tint);
+  border-left-color: var(--caution);
+}
+/* couldnt / didnt — calm neutral, deliberately NOT red and NOT apologetic. */
+.pac__report--neutral {
+  background: var(--surface-2);
+  border-left-color: var(--line);
+}
+.pac__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+}
+.pac__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pa-space-2);
+}
+
+/* ==========================================================================
+ * C) + D) Footer — working indicator over the composer.
+ * ======================================================================== */
+.pac__foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+}
+
+/* Working state — LOCAL "thinking". Empty (and zero-height) at rest; text-first when
+ * active. The pulse is decorative and its resting frame is a solid dot, so reduced
+ * motion (which freezes the animation) still shows a visible indicator + the text. */
+.pac__working {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  min-height: 0;
+  color: var(--muted);
+  font-size: var(--pa-text-sm);
+}
+.pac__working.is-active {
+  min-height: 20px;
+}
+.pac__working-text {
+  color: var(--ink);
+}
+.pac__pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: pac-pulse 1200ms var(--pa-ease) infinite;
+}
+@keyframes pac-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.7);
+  }
+}
+
+/* Composer — input on its own row (robust at narrow side-panel widths), controls
+ * below: mic on the left, Stop + Send pushed to the right. */
+.pac__composer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+}
+.pac__input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 var(--pa-space-3);
+  background: var(--surface-2);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+.pac__input::placeholder {
+  color: var(--muted);
+}
+.pac__input:hover {
+  border-color: var(--muted);
+}
+.pac__controls {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+}
+.pac__controls-spacer {
+  flex: 1 1 auto;
+}
+
+/* Mic — disabled, honestly labelled "Later". A cloud speech service would send audio
+ * off the device (that's the title), so it is not wired up in this on-device build. */
+.pac__mic {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--pa-space-2);
+  background: transparent;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+}
+.pac__mic:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.pac__mic-tag {
+  white-space: nowrap;
+}

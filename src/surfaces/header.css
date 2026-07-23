@@ -1,0 +1,252 @@
+/* Header surface styles (Plan Step 3.2).
+ *
+ * Every value resolves through the semantic design tokens in ../styles/tokens.css —
+ * no raw hex or bare color keyword appears here. Focus is handled globally by
+ * tokens.css `:focus-visible` (never suppressed). Interactive controls come from the
+ * Button primitive, so their ≥44×44 target + focus ring are already guaranteed. Class
+ * names are `pah-*` so they never collide with `.pa-*` (side panel) or `.pak-*`
+ * (primitives).
+ */
+
+.pah {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-ui);
+}
+
+.pah__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-3);
+  /* Graceful degradation in a narrow panel: a region drops to the next line rather
+     than clipping a control. Text regions ellipsise before that happens. */
+  flex-wrap: wrap;
+  row-gap: var(--pa-space-1);
+}
+
+/* Visually-hidden helper — stays in the accessibility tree. */
+.pah__vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+ * Region 1 — page identity
+ * ======================================================================== */
+.pah__identity {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+}
+
+/* Favicon placeholder — decorative square (no real favicon in Scope-A). */
+.pah__favicon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--pa-radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.pah__page {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: var(--pa-leading);
+}
+
+.pah__title,
+.pah__origin {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pah__title {
+  color: var(--ink);
+  font-size: var(--pa-text-base);
+  font-weight: 600;
+}
+.pah__origin {
+  color: var(--muted);
+  font-size: var(--pa-text-xs);
+}
+
+/* ==========================================================================
+ * Region 3 — processing-locus indicator
+ * ======================================================================== */
+.pah__locus {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+  font-size: var(--pa-text-xs);
+}
+.pah__locus-label {
+  white-space: nowrap;
+}
+
+/* On-device: quiet, dormant instrumentation. Brand is used only as the identity
+   signal on the lit node; the label stays muted. NO "protected" claim. */
+.pah__locus--on-device {
+  color: var(--muted);
+}
+.pah__locus--on-device svg {
+  color: var(--brand-dim);
+}
+
+/* Unavailable: a distinct, fully-muted resting state (the node is dark). The
+   difference from on-device is also spelled out in the label. */
+.pah__locus--unavailable {
+  color: var(--muted);
+}
+.pah__locus--unavailable svg {
+  color: var(--muted);
+  opacity: 0.75;
+}
+
+/* Off-device: a DISTINCT material — Offshore color, dashed edge, tinted fill — that
+   reads as "different track". Only relevant later; rendered truthfully if it occurs. */
+.pah__locus--off-device {
+  gap: var(--pa-space-2);
+  padding: 2px var(--pa-space-2);
+  border: 1px dashed var(--offshore);
+  border-radius: var(--pa-radius-pill);
+  background: var(--offshore-tint);
+  color: var(--offshore);
+}
+.pah__locus--off-device svg {
+  color: var(--offshore);
+}
+
+/* ==========================================================================
+ * Region 2 — freshness state-machine
+ * ======================================================================== */
+.pah__freshness {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  font-size: var(--pa-text-sm);
+}
+.pah__freshness-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pah__freshness-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+/* fresh: quiet. aging: subtle (text lifts to ink). stale/scanning/failed: full ink.
+   Freshness never borrows the safety trio — escalation is by prominence + copy. */
+.pah__freshness--fresh {
+  color: var(--muted);
+}
+.pah__freshness--aging,
+.pah__freshness--stale,
+.pah__freshness--scanning,
+.pah__freshness--failed {
+  color: var(--ink);
+}
+
+.pah__freshness--stale .pah__freshness-dot {
+  background: var(--ink);
+}
+/* scanning: a gentle pulse (local activity, not a network spinner). Frozen visible
+   under reduced-motion via the global rule; the text still announces the state. */
+.pah__freshness--scanning .pah__freshness-dot {
+  background: var(--brand);
+  animation: pah-pulse 1.4s var(--pa-ease) infinite;
+}
+/* failed: a calm hollow ring, not a filled alarm dot. */
+.pah__freshness--failed .pah__freshness-dot {
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+  background: transparent;
+  border: 2px solid var(--muted);
+}
+
+.pah__rescan {
+  flex: none;
+}
+
+/* ==========================================================================
+ * Acting indicator + Stop
+ * ======================================================================== */
+.pah__bar--acting {
+  padding: var(--pa-space-2) var(--pa-space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  background: var(--surface-2);
+}
+.pah__pulse {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--brand);
+  animation: pah-pulse 1.4s var(--pa-ease) infinite;
+}
+.pah__acting-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink);
+  font-size: var(--pa-text-sm);
+}
+.pah__stop {
+  flex: none;
+}
+
+@keyframes pah-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — keep non-text indicators visible.
+ * Meaning is always also carried in text, so these only preserve affordance.
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .pah__favicon,
+  .pah__locus--off-device {
+    border-color: CanvasText;
+  }
+  .pah__freshness-dot,
+  .pah__pulse {
+    background: CanvasText;
+  }
+  .pah__freshness--failed .pah__freshness-dot {
+    background: transparent;
+    border-color: CanvasText;
+  }
+}
