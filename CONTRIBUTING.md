@@ -59,17 +59,23 @@ npm run typecheck
 ```
 
 Task runner is npm (this is a **standalone** project — no Nx root is materialized;
-`project.json` mirrors the npm scripts for a future Nx root). `build`, `lint`, and
-`test` are placeholders until Phase 1 lands the bundler, ESLint + `jsx-a11y`, and
-Vitest + axe.
+`project.json` mirrors the npm scripts for a future Nx root). `build` (Vite + CRXJS +
+React) and `typecheck` are live; `dev` runs `vite build --watch`. `lint` and `test`
+remain placeholders until the ESLint + `jsx-a11y` / Vitest + axe harness lands (issue #14).
 
-### Load the extension (Phase 0, no build)
+### Build & load the extension
+
+```bash
+npm run build      # or: npm run dev  (rebuild on save)
+```
 
 1. `chrome://extensions` → enable **Developer mode**.
-2. **Load unpacked** → select the `public/` folder.
+2. **Load unpacked** → select the **`dist/`** folder (produced by the build).
 3. Click the toolbar icon (or press **Cmd/Ctrl + Shift + Y**) to open the side panel.
 
-From Phase 1 the build emits `dist/` and you load that instead.
+Reload the extension in `chrome://extensions` after each rebuild — MV3's strict CSP
+forbids the eval-based Vite dev server inside the panel, so `npm run dev` is a
+watch-rebuild loop, not live HMR (Step 1.2).
 
 ### Run the derisking spikes
 
@@ -93,12 +99,18 @@ the visual source of truth.
 
 ```
 pageagent/
-├─ public/            # Phase 0 static, loadable-unpacked extension (manifest, panel, SW, icons)
-├─ src/               # TypeScript source (grows from Phase 1)
-├─ spikes/            # throwaway derisking probes (Phase 0)
-├─ docs/              # product inception (00–07), DESIGN-BRIEF.md, IMPLEMENTATION-PLAN.md
-│  └─ design/         # imported PageAgent.dc.html (Claude Design) — visual source of truth
-├─ package.json       # standalone workspace + npm task runner
-├─ project.json       # Nx project descriptor (inert until an Nx root exists)
-└─ CONTRIBUTING.md
+├─ src/                # TypeScript + React source
+│  ├─ sidepanel/       # the side-panel React app (index.html, main.tsx, App.tsx, styles.css)
+│  ├─ background/      # MV3 service worker
+│  ├─ content/         # content script (isolated) + main-world island
+│  └─ lib/             # shared modules (capabilities preflight, …)
+├─ public/icons/       # extension icons (copied into dist/)
+├─ dist/               # build output — load THIS unpacked (git-ignored)
+├─ spikes/             # throwaway derisking probes (Phase 0)
+├─ docs/               # inception (00–07), DESIGN-BRIEF.md, IMPLEMENTATION-PLAN.md
+│  └─ design/          # imported PageAgent.dc.html (Claude Design) — visual source of truth
+├─ manifest.config.ts  # MV3 manifest (CRXJS defineManifest)
+├─ vite.config.ts      # Vite + React + CRXJS build
+├─ package.json        # standalone workspace + npm task runner
+└─ project.json        # Nx project descriptor (inert until an Nx root exists)
 ```
