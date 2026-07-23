@@ -19,7 +19,10 @@ interface LanguageModelLike {
 }
 
 function getLanguageModel(): LanguageModelLike | null {
-  const g = self as unknown as { LanguageModel?: LanguageModelLike; ai?: { languageModel?: LanguageModelLike } };
+  const g = self as unknown as {
+    LanguageModel?: LanguageModelLike;
+    ai?: { languageModel?: LanguageModelLike };
+  };
   return g.LanguageModel ?? g.ai?.languageModel ?? null;
 }
 
@@ -48,14 +51,21 @@ const REASONS: Record<Availability, string> = {
 /** Passive probe. Safe to call on load; never downloads, never needs a gesture. */
 export async function detectLanguageModel(): Promise<CapabilityState> {
   const lm = getLanguageModel();
-  if (!lm) return { languageModel: 'unavailable', reason: 'Prompt API not present in this browser' };
+  if (!lm)
+    return { languageModel: 'unavailable', reason: 'Prompt API not present in this browser' };
   try {
     const raw = lm.availability ? await lm.availability() : (await lm.capabilities?.())?.available;
     const languageModel = normalize(raw);
-    const reason = languageModel === 'unavailable' && raw ? `Prompt API present but unavailable (${raw})` : REASONS[languageModel];
+    const reason =
+      languageModel === 'unavailable' && raw
+        ? `Prompt API present but unavailable (${raw})`
+        : REASONS[languageModel];
     return { languageModel, reason };
   } catch (e) {
-    return { languageModel: 'unavailable', reason: `availability() failed: ${(e as Error).message}` };
+    return {
+      languageModel: 'unavailable',
+      reason: `availability() failed: ${(e as Error).message}`,
+    };
   }
 }
 
