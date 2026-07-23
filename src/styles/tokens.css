@@ -79,6 +79,29 @@
 
   /* ---- focus -------------------------------------------------------------- */
   --pa-focus-width: 2px;
+
+  /* ---- type --------------------------------------------------------------- */
+  --pa-font-display: 'Hanken Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pa-font-body: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --pa-font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --pa-font-hyperlegible: 'Atkinson Hyperlegible', var(--pa-font-body);
+
+  /* semantic UI font — Hyperlegible mode overrides it below */
+  --font-ui: var(--pa-font-body);
+
+  /* type scale (rem/ch — survives 200% zoom with zero horizontal scroll) */
+  --pa-text-xs: 0.75rem;
+  --pa-text-sm: 0.8125rem;
+  --pa-text-base: 0.875rem;
+  --pa-text-lg: 1.125rem;
+  --pa-text-xl: 1.375rem;
+  --pa-leading: 1.5;
+  --pa-tracking-tight: -0.01em;
+}
+
+/* Hyperlegible mode (accessibility setting) — swaps the UI font, composable with theme. */
+:root[data-hyperlegible] {
+  --font-ui: var(--pa-font-hyperlegible);
 }
 
 /* ---- semantic aliases: DARK (default / dark-first) ------------------------ */
@@ -110,6 +133,7 @@
   --offshore-tint: #101a24;
 
   --focus: var(--pa-halide-500);
+  --on-brand: #04110f; /* dark ink for text on a --brand fill; correct on both themes */
 }
 
 /* light values, applied when the OS prefers light and dark isn't forced */

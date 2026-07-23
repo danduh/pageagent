@@ -1,0 +1,499 @@
+/* PageAgent component primitives — styles.
+ *
+ * Every value here resolves through the semantic design tokens declared in
+ * ../styles/tokens.css. No raw hex or bare color keyword appears in this file —
+ * text sitting on a --brand fill uses the --on-brand token (a theme-independent
+ * dark ink, since brand is a light-ish teal in both themes).
+ *
+ * Focus is handled globally by tokens.css `:focus-visible` — never suppressed
+ * here. Interactive targets are ≥44×44 CSS px (WCAG 2.5.5 AAA). Class names are
+ * `pak-*` so they never collide with the side panel's `.pa-*` rules.
+ */
+
+/* Visually-hidden helper — content stays in the accessibility tree. */
+.pak-vh {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ==========================================================================
+ * Button
+ * ======================================================================== */
+.pak-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pa-space-2);
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--pa-space-4);
+  border: 1px solid transparent;
+  border-radius: var(--pa-radius);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  font-weight: 600;
+  line-height: var(--pa-leading);
+  cursor: pointer;
+  transition:
+    background-color var(--pa-dur-fast) var(--pa-ease),
+    border-color var(--pa-dur-fast) var(--pa-ease),
+    color var(--pa-dur-fast) var(--pa-ease);
+}
+/* Hover/active wash sits BELOW the label (::before) so text stays crisp. */
+.pak-btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: transparent;
+  pointer-events: none;
+  transition: background-color var(--pa-dur-fast) var(--pa-ease);
+}
+.pak-btn:hover:not(:disabled)::before {
+  background: color-mix(in srgb, var(--ink) 10%, transparent);
+}
+.pak-btn:active:not(:disabled)::before {
+  background: color-mix(in srgb, var(--ink) 18%, transparent);
+}
+.pak-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pak-btn--primary {
+  background: var(--brand);
+  color: var(--on-brand);
+  border-color: var(--brand);
+}
+
+.pak-btn--ghost {
+  background: transparent;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+/* Destructive: halt-tinted surface framed in the halt signal, with high-contrast
+ * ink. The caller supplies the label (the verb/amount restatement) — there is no
+ * built-in OK/Confirm text. */
+.pak-btn--destructive {
+  background: var(--halt-tint);
+  color: var(--ink);
+  border-color: var(--halt);
+}
+
+/* ==========================================================================
+ * Toggle / switch
+ * ======================================================================== */
+.pak-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-3);
+}
+.pak-toggle__label {
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  color: var(--ink);
+}
+.pak-toggle.is-disabled .pak-toggle__label {
+  color: var(--muted);
+}
+.pak-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* Full 44×44 activation target around a compact visual track. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 var(--pa-space-1);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.pak-switch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pak-switch__track {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 24px;
+  border-radius: var(--pa-radius-pill);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: background-color var(--pa-dur-actuation) var(--pa-ease-firm);
+}
+.pak-switch__thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--muted);
+  transition:
+    transform var(--pa-dur-actuation) var(--pa-ease-firm),
+    background-color var(--pa-dur-actuation) var(--pa-ease-firm);
+}
+.pak-switch[aria-checked='true'] .pak-switch__track {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.pak-switch[aria-checked='true'] .pak-switch__thumb {
+  background: var(--surface);
+  transform: translateX(16px);
+}
+
+/* ==========================================================================
+ * Tabs
+ * ======================================================================== */
+.pak-tabs {
+  display: flex;
+  gap: var(--pa-space-1);
+}
+.pak-tabs--horizontal {
+  flex-direction: row;
+  border-bottom: 1px solid var(--line);
+}
+.pak-tabs--vertical {
+  flex-direction: column;
+  border-right: 1px solid var(--line);
+}
+.pak-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--pa-space-3);
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  cursor: pointer;
+  transition: color var(--pa-dur-fast) var(--pa-ease);
+}
+.pak-tab:hover:not(:disabled) {
+  color: var(--ink);
+}
+.pak-tab.is-selected {
+  color: var(--ink);
+  font-weight: 600;
+}
+.pak-tabs--horizontal .pak-tab.is-selected {
+  box-shadow: inset 0 -2px 0 0 var(--brand);
+}
+.pak-tabs--vertical .pak-tab.is-selected {
+  box-shadow: inset -2px 0 0 0 var(--brand);
+}
+.pak-tab:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+ * List + ListRow
+ * ======================================================================== */
+.pak-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pak-listrow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--pa-space-2);
+  border-bottom: 1px solid var(--line);
+}
+.pak-listrow__main {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-3);
+  min-height: 44px;
+  padding: var(--pa-space-2) var(--pa-space-3);
+  background: transparent;
+  border: none;
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  text-align: left;
+  cursor: pointer;
+  transition: background-color var(--pa-dur-fast) var(--pa-ease);
+}
+.pak-listrow__main:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+.pak-listrow__main:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+.pak-listrow__action {
+  display: inline-flex;
+  align-items: center;
+  flex: none;
+  padding-right: var(--pa-space-2);
+}
+.pak-listrow.is-disabled {
+  opacity: 0.6;
+}
+
+/* ==========================================================================
+ * Field
+ * ======================================================================== */
+.pak-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+}
+.pak-field__label {
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-sm);
+  font-weight: 600;
+  color: var(--ink);
+}
+.pak-field__input {
+  min-height: 44px;
+  padding: 0 var(--pa-space-3);
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+.pak-field__input::placeholder {
+  color: var(--muted);
+}
+.pak-field__input:hover:not(:disabled) {
+  border-color: var(--muted);
+}
+.pak-field__input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pak-field__hint {
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-xs);
+  color: var(--muted);
+}
+
+/* ==========================================================================
+ * Badge — meaning is in the text; the tone only reinforces it.
+ * ======================================================================== */
+.pak-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+  padding: 2px var(--pa-space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius-sm);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-xs);
+  font-weight: 600;
+  line-height: var(--pa-leading);
+  white-space: nowrap;
+}
+.pak-badge--safe {
+  background: var(--safe-tint);
+  border-color: var(--safe);
+}
+.pak-badge--caution {
+  background: var(--caution-tint);
+  border-color: var(--caution);
+}
+.pak-badge--destructive {
+  background: var(--halt-tint);
+  border-color: var(--halt);
+}
+.pak-badge--brand {
+  background: transparent;
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+.pak-badge--filament {
+  background: var(--filament-tint);
+  border-color: var(--filament);
+}
+
+/* ==========================================================================
+ * Chip
+ * ======================================================================== */
+.pak-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--pa-space-1);
+  padding: 0 var(--pa-space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius-pill);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-sm);
+  line-height: var(--pa-leading);
+  white-space: nowrap;
+}
+.pak-chip--brand {
+  border-color: var(--brand);
+  color: var(--brand-ink);
+}
+.pak-chip--filament {
+  border-color: var(--filament);
+}
+.pak-chip--offshore {
+  border-color: var(--offshore);
+}
+/* Interactive chip (rendered as a <button>) — full 44px target + states. */
+button.pak-chip {
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  transition:
+    background-color var(--pa-dur-fast) var(--pa-ease),
+    border-color var(--pa-dur-fast) var(--pa-ease);
+}
+button.pak-chip:hover:not(:disabled) {
+  background: var(--surface);
+}
+button.pak-chip.is-selected {
+  background: var(--brand);
+  border-color: var(--brand);
+  color: var(--on-brand);
+  font-weight: 600;
+}
+button.pak-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ==========================================================================
+ * Banner
+ * ======================================================================== */
+.pak-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--pa-space-2);
+  padding: var(--pa-space-3) var(--pa-space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  background: var(--surface-2);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  line-height: var(--pa-leading);
+}
+.pak-banner--safe {
+  background: var(--safe-tint);
+  border-color: var(--safe);
+}
+.pak-banner--caution {
+  background: var(--caution-tint);
+  border-color: var(--caution);
+}
+.pak-banner--destructive {
+  background: var(--halt-tint);
+  border-color: var(--halt);
+}
+.pak-banner--brand {
+  background: transparent;
+  border-color: var(--brand);
+}
+.pak-banner--filament {
+  background: var(--filament-tint);
+  border-color: var(--filament);
+}
+.pak-banner--offshore {
+  background: var(--offshore-tint);
+  border-color: var(--offshore);
+}
+
+/* ==========================================================================
+ * Card — Tool spec-card with a FUNCTIONAL Action-type left-edge tick.
+ * ======================================================================== */
+.pak-card {
+  position: relative;
+  display: flex;
+  gap: var(--pa-space-3);
+  /* Room for the left-edge tick without a decorative accent bar. */
+  padding: var(--pa-space-3) var(--pa-space-4) var(--pa-space-3) var(--pa-space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--pa-radius);
+  background: var(--surface);
+}
+.pak-card__tick {
+  position: absolute;
+  left: 0;
+  top: var(--pa-space-2);
+  bottom: var(--pa-space-2);
+  width: 3px;
+  border-radius: var(--pa-radius-pill);
+  /* Keyed per Action-type below; defaults to the neutral hairline. */
+  background: var(--muted);
+}
+/* Four distinct, non-safety hues so the tick never falsely reads as
+ * Safe/Caution/Halt. The Action-type is always also present in words. */
+.pak-card--click .pak-card__tick {
+  background: var(--brand);
+}
+.pak-card--type .pak-card__tick {
+  background: var(--filament);
+}
+.pak-card--choose .pak-card__tick {
+  background: var(--offshore);
+}
+.pak-card--follow-link .pak-card__tick {
+  background: var(--ink);
+}
+.pak-card__content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pa-space-1);
+  min-width: 0;
+}
+.pak-card__name {
+  font-family: var(--pa-font-mono);
+  font-size: var(--pa-text-sm);
+  color: var(--brand-ink);
+  word-break: break-word;
+}
+.pak-card__body {
+  font-family: var(--font-ui);
+  font-size: var(--pa-text-base);
+  color: var(--ink);
+}
+
+/* ==========================================================================
+ * Forced-colors (Windows High Contrast) — keep non-text indicators visible.
+ * Meaning is always also carried in text, so these only preserve affordance.
+ * ======================================================================== */
+@media (forced-colors: active) {
+  .pak-switch__track {
+    border-color: CanvasText;
+  }
+  .pak-switch__thumb {
+    background: CanvasText;
+  }
+  .pak-switch[aria-checked='true'] .pak-switch__thumb {
+    background: Highlight;
+  }
+  .pak-card__tick {
+    background: CanvasText;
+  }
+  .pak-tab.is-selected {
+    box-shadow: inset 0 -2px 0 0 CanvasText;
+  }
+}
