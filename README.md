@@ -2,35 +2,72 @@
 
 > **Turn any web page into something you can talk to.** A Chrome extension that scans the current page, auto-generates WebMCP tools from its buttons/inputs/links, and lets Chrome's built-in on-device LLM act on the page through a chat (and voice) assistant — privately, on your machine.
 
-*(“PageAgent” is a provisional codename — see the naming options in the brief.)*
+*(“PageAgent” is a provisional codename — see the naming options in [`docs/00-brief.md`](docs/00-brief.md).)*
 
 ---
 
-## Status: PRE-DEVELOPMENT — documentation only
+## Status: IN DEVELOPMENT — Phase 0 (scaffold & derisk)
 
-This workspace is the **home for the PageAgent Chrome extension**, but **no code exists yet**. Right now it holds the product foundation needed to *start* the development process: brief, definition, requirements, users, ideas, competitive landscape, risks, and a capabilities reference.
+Implementation has begun, following [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md)
+(one ordered roadmap; **Scope A** = a faithful, accessible side-panel UI on mock data,
+**Scope B** = the real on-device engine). Work is tracked in GitHub issues under the
+[epic #7](https://github.com/danduh/pageagent/issues/7); see [`CONTRIBUTING.md`](CONTRIBUTING.md)
+for how we work.
 
-There is deliberately **no implementation, no architecture/HLD, and no build/sprint plan** here yet — those come after this foundation is reviewed. The Nx build scaffold (manifest, `src/`, bundler config, targets) is added when implementation begins.
+**Phase 0** stands up a loadable MV3 side-panel shell (no build), a summon shortcut, the
+standalone workspace, the imported design, and two derisking spikes. The engine, the real
+surfaces, and the safety layer come in later phases.
 
-## Start here → [`docs/`](./docs/)
+## Quickstart (Phase 0)
 
-See [`docs/README.md`](./docs/README.md) for the full index. In short:
+```bash
+npm install
+npm run typecheck
+```
+
+Then load it in Chrome:
+
+1. `chrome://extensions` → enable **Developer mode**
+2. **Load unpacked** → select the `public/` folder
+3. Click the toolbar icon or press **Cmd/Ctrl + Shift + Y** to open the panel
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full dev setup, the spikes, and how the
+design is refreshed from Claude Design.
+
+## What's here
+
+| Path | What it is |
+|------|-----------|
+| [`docs/`](docs/) | Product inception (00–07), the [design brief](docs/DESIGN-BRIEF.md), and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) |
+| [`docs/design/`](docs/design/) | `PageAgent.dc.html` imported from Claude Design — the visual source of truth |
+| [`public/`](public/) | Phase 0 static, loadable-unpacked extension (manifest, side panel, service worker, icons) |
+| [`src/`](src/) | TypeScript source (grows from Phase 1) |
+| [`spikes/`](spikes/) | Throwaway derisking probes (Prompt-API-in-side-panel; element-handle re-resolution) |
+
+### The product docs (read in order)
 
 | Doc | What it answers |
 |-----|-----------------|
-| `00-brief.md` | The one-page pitch: what it is, why now, who it's for |
-| `01-product-definition.md` | Scope, core concepts & terminology, the surfaces, what's in/out |
-| `02-requirements.md` | Product-level functional & non-functional requirements |
-| `03-users-and-use-cases.md` | Personas, jobs-to-be-done, concrete scenarios |
-| `04-ideas-and-backlog.md` | The idea bank / parking lot for later |
-| `05-competitive-landscape.md` | Reference products & our differentiation |
-| `06-risks-and-open-questions.md` | The honest hard parts + what to resolve before planning |
-| `07-capabilities-reference.md` | The Chrome built-in AI palette this relies on, and its reality |
+| [`00-brief.md`](docs/00-brief.md) | The one-page pitch: what it is, why now, who it's for |
+| [`01-product-definition.md`](docs/01-product-definition.md) | Scope, core concepts & terminology, the surfaces, what's in/out |
+| [`02-requirements.md`](docs/02-requirements.md) | Product-level functional & non-functional requirements (REQ-IDs) |
+| [`03-users-and-use-cases.md`](docs/03-users-and-use-cases.md) | Personas, jobs-to-be-done, concrete scenarios |
+| [`04-ideas-and-backlog.md`](docs/04-ideas-and-backlog.md) | The idea bank / parking lot for later |
+| [`05-competitive-landscape.md`](docs/05-competitive-landscape.md) | Reference products & our differentiation |
+| [`06-risks-and-open-questions.md`](docs/06-risks-and-open-questions.md) | The honest hard parts + what to resolve before planning |
+| [`07-capabilities-reference.md`](docs/07-capabilities-reference.md) | The Chrome built-in AI palette this relies on, and its reality |
+| [`DESIGN-BRIEF.md`](docs/DESIGN-BRIEF.md) | The design description handed to Claude Design |
+| [`IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md) | Step-by-step build plan; each step a deliverable |
+
+## Contributing
+
+Issue-first, PR-linked, lightly labeled. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before
+opening a PR.
 
 ## Relationship to the rest of the repo
 
 PageAgent is the natural fusion of work already in this monorepo:
-- **`/webmcp` demo** (in `chat/`) — a page *exposing* its own `document.modelContext` tools.
-- **`feat/mcp-client`** (in `chat/`) — an in-browser MCP *client* + built-in-LLM agent loop that *consumes* a remote MCP server.
+- **`/webmcp` demo** — a page *exposing* its own `document.modelContext` tools.
+- **`feat/mcp-client`** — an in-browser MCP *client* + built-in-LLM agent loop that *consumes* a remote MCP server.
 
 PageAgent is the mirror/superset: it **manufactures** a WebMCP tool surface from *any* page's DOM and drives it with that same agent loop — so the agentic web works on sites that haven't adopted WebMCP yet.

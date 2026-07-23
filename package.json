@@ -1,0 +1,18 @@
+{
+  "name": "pageagent",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "PageAgent — an on-device Chrome extension that turns any web page into something you can talk to.",
+  "license": "MIT",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "node -e \"console.log('[pageagent] build target arrives in Phase 1 (bundler). Phase 0 loads public/ unpacked.')\"",
+    "lint": "node -e \"console.log('[pageagent] lint arrives in Phase 1 (eslint + jsx-a11y).')\"",
+    "test": "node -e \"console.log('[pageagent] tests arrive in Phase 1 (vitest + axe).')\""
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.2.2",
+    "typescript": "~5.9"
+  }
+}

@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Spike A — LanguageModel in side panel</title>
+    <style>
+      body { font: 13px/1.5 -apple-system, system-ui, sans-serif; margin: 16px; background: #0b1614; color: #e7f0ed; }
+      h1 { font-size: 15px; }
+      pre { background: #12211e; border: 1px solid #26403a; border-radius: 8px; padding: 10px; white-space: pre-wrap; }
+      .ok { color: #46c07e; } .bad { color: #e5645a; } .warn { color: #e4a63a; }
+      button { font: inherit; background: #33cfbd; color: #04110f; border: 0; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+    </style>
+  </head>
+  <body>
+    <h1>Spike A — does <code>LanguageModel</code> work in the side panel?</h1>
+    <p>Runs automatically on load. Click to re-run after downloading the model.</p>
+    <button id="run">Re-run probe</button>
+    <pre id="out">running…</pre>
+    <script src="panel.js"></script>
+  </body>
+</html>

@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "PageAgent",
+  "version": "0.0.1",
+  "description": "Turn any web page into something you can talk to — on-device, in the page in front of you.",
+  "minimum_chrome_version": "114",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_title": "PageAgent — open the panel",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "permissions": ["sidePanel", "scripting", "activeTab", "storage"],
+  "commands": {
+    "toggle_panel": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Open the PageAgent side panel and focus its input"
+    }
+  }
+}

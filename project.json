@@ -1,0 +1,26 @@
+{
+  "name": "pageagent",
+  "$schema": "../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "src",
+  "projectType": "application",
+  "tags": ["status:in-development", "type:chrome-extension"],
+  "// note": "Standalone project — the canonical task runner is npm (see package.json scripts). This project.json is retained so a future Nx root at /Users/danielos/dev can adopt the project unchanged; its targets mirror the npm scripts via nx:run-commands and are inert until such a root exists.",
+  "targets": {
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": { "command": "npm run typecheck", "cwd": "pageagent" }
+    },
+    "build": {
+      "executor": "nx:run-commands",
+      "options": { "command": "npm run build", "cwd": "pageagent" }
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": { "command": "npm run lint", "cwd": "pageagent" }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": { "command": "npm run test", "cwd": "pageagent" }
+    }
+  }
+}

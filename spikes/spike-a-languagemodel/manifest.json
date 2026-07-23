@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "PageAgent Spike A — LanguageModel in side panel",
+  "version": "0.0.1",
+  "description": "Throwaway probe: does the Prompt API work from an MV3 side-panel document?",
+  "minimum_chrome_version": "128",
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "panel.html" },
+  "permissions": ["sidePanel"],
+  "// note": "For real on-device use, Phase 1.5 adds the aiLanguageModelOriginTrial permission and a trial_tokens entry. The probe reports availability honestly even without them."
+}
