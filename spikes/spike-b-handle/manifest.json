@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "PageAgent Spike B — handle re-resolution",
+  "version": "0.0.1",
+  "description": "Throwaway probe: re-resolve an element handle across an SPA re-render; read document.modelContext from the MAIN world.",
+  "minimum_chrome_version": "114",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "world": "MAIN"
+    }
+  ],
+  "// note": "Runs in the MAIN world so it can read document.modelContext. It only activates on a page containing #spikeb-fixture (our fixture), so <all_urls> is harmless for this throwaway probe."
+}

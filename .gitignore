@@ -1,0 +1,16 @@
+# dependencies
+node_modules/
+
+# build output (Phase 1+)
+dist/
+*.tsbuildinfo
+
+# origin-trial token & secrets — injected at build time, NEVER committed (Step 1.5)
+.env
+.env.*
+trial-token.txt
+*.trialtoken
+
+# logs / os
+*.log
+.DS_Store

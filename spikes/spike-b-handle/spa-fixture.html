@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Spike B — SPA re-render fixture</title>
+    <style>
+      body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; background: #0b1614; color: #e7f0ed; }
+      #spikeb-fixture { max-width: 640px; }
+      .toolbar { display: flex; gap: 8px; margin: 12px 0; }
+      button { font: inherit; background: #12211e; color: #e7f0ed; border: 1px solid #26403a; border-radius: 8px; padding: 8px 12px; cursor: pointer; }
+      .job-row { display: flex; justify-content: space-between; align-items: center; border: 1px solid #26403a; border-radius: 8px; padding: 8px 12px; margin: 6px 0; }
+      .primary { border-color: #33cfbd; }
+      h1 { font-size: 16px; }
+      code { color: #33cfbd; }
+    </style>
+  </head>
+  <body>
+    <div id="spikeb-fixture">
+      <h1>Pipeline #1482 — Spike B fixture</h1>
+      <p>Simulates an SPA that re-renders its DOM (fresh node identities). Use the
+        Spike B control panel (injected top-right) to capture a handle to the
+        <code>Rerun failed jobs</code> button, then click
+        <b>Simulate SPA re-render</b>, then re-resolve.</p>
+      <div class="toolbar">
+        <button class="rerender">Simulate SPA re-render</button>
+      </div>
+      <div id="app"></div>
+    </div>
+    <script>
+      // Self-contained SPA-ish app. Each render creates BRAND NEW nodes.
+      let renderCount = 0;
+      function render() {
+        renderCount++;
+        const app = document.getElementById('app');
+        const shuffle = renderCount % 2 === 0; // change order on alternate renders
+        const tools = [
+          { id: 'btn-rerun', label: 'Rerun failed jobs', primary: true },
+          { id: 'btn-cancel', label: 'Cancel run' },
+          { id: 'btn-logs', label: 'View logs' },
+        ];
+        if (shuffle) tools.reverse(); // stress index/position-based strategies
+        const toolbar = document.createElement('div');
+        toolbar.className = 'toolbar';
+        tools.forEach((t) => {
+          const b = document.createElement('button');
+          b.id = t.id;
+          b.textContent = t.label;
+          if (t.primary) b.classList.add('primary');
+          toolbar.appendChild(b);
+        });
+        const list = document.createElement('div');
+        for (let i = 1; i <= 3; i++) {
+          const row = document.createElement('div');
+          row.className = 'job-row';
+          row.innerHTML = '<span>job-' + i + ' (failed)</span>';
+          const rb = document.createElement('button');
+          rb.textContent = 'Retry';
+          row.appendChild(rb);
+          list.appendChild(row);
+        }
+        app.replaceChildren(toolbar, list); // wipe + rebuild => new identities
+        window.dispatchEvent(new CustomEvent('spikeb:rerendered', { detail: { renderCount } }));
+      }
+      document.querySelector('.rerender').addEventListener('click', render);
+      // Best-effort: expose a trivial document.modelContext if the API exists,
+      // so the MAIN-world content script can test reading it.
+      try {
+        if (document.modelContext && document.modelContext.provideContext) {
+          document.modelContext.provideContext({
+            tools: [{ name: 'noop', description: 'spike fixture tool', async execute() {} }],
+          });
+        }
+      } catch (e) { /* API absent — that is itself a finding */ }
+      render();
+    </script>
+  </body>
+</html>
