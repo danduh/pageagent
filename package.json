@@ -6,13 +6,24 @@
   "description": "PageAgent — an on-device Chrome extension that turns any web page into something you can talk to.",
   "license": "MIT",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "build": "node -e \"console.log('[pageagent] build target arrives in Phase 1 (bundler). Phase 0 loads public/ unpacked.')\"",
-    "lint": "node -e \"console.log('[pageagent] lint arrives in Phase 1 (eslint + jsx-a11y).')\"",
-    "test": "node -e \"console.log('[pageagent] tests arrive in Phase 1 (vitest + axe).')\""
+    "dev": "vite build --watch --mode development",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
+    "lint": "node -e \"console.log('[pageagent] lint target — eslint + jsx-a11y wired in issue #14.')\"",
+    "test": "node -e \"console.log('[pageagent] test target — vitest + axe wired in issue #14.')\""
   },
   "devDependencies": {
+    "@crxjs/vite-plugin": "^2.7.1",
     "@types/chrome": "^0.2.2",
-    "typescript": "~5.9"
+    "@types/node": "^22.20.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "~5.9",
+    "vite": "^6.4.3"
+  },
+  "dependencies": {
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8"
   }
 }

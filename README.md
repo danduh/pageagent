@@ -6,29 +6,30 @@
 
 ---
 
-## Status: IN DEVELOPMENT — Phase 0 (scaffold & derisk)
+## Status: IN DEVELOPMENT — Phase 1 (build system)
 
-Implementation has begun, following [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md)
-(one ordered roadmap; **Scope A** = a faithful, accessible side-panel UI on mock data,
-**Scope B** = the real on-device engine). Work is tracked in GitHub issues under the
+Implementation follows [`docs/IMPLEMENTATION-PLAN.md`](docs/IMPLEMENTATION-PLAN.md) (one ordered
+roadmap; **Scope A** = a faithful, accessible side-panel UI on mock data, **Scope B** = the real
+on-device engine). Work is tracked in GitHub issues under the
 [epic #7](https://github.com/danduh/pageagent/issues/7); see [`CONTRIBUTING.md`](CONTRIBUTING.md)
 for how we work.
 
-**Phase 0** stands up a loadable MV3 side-panel shell (no build), a summon shortcut, the
-standalone workspace, the imported design, and two derisking spikes. The engine, the real
-surfaces, and the safety layer come in later phases.
+**Phase 0** (done) stood up the loadable side-panel shell, summon shortcut, standalone workspace,
+imported design, and two derisking spikes (run on Chrome 152 — see [`spikes/FINDINGS.md`](spikes/FINDINGS.md)).
+**Phase 1** (in progress) turns the shell into a bundled **React + TypeScript** MV3 build (Vite +
+CRXJS) with an on-device capability preflight. The engine, real surfaces, and safety layer follow.
 
-## Quickstart (Phase 0)
+## Quickstart
 
 ```bash
 npm install
-npm run typecheck
+npm run build      # or: npm run dev  (rebuild on save)
 ```
 
 Then load it in Chrome:
 
 1. `chrome://extensions` → enable **Developer mode**
-2. **Load unpacked** → select the `public/` folder
+2. **Load unpacked** → select the **`dist/`** folder
 3. Click the toolbar icon or press **Cmd/Ctrl + Shift + Y** to open the panel
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full dev setup, the spikes, and how the
@@ -40,8 +41,9 @@ design is refreshed from Claude Design.
 |------|-----------|
 | [`docs/`](docs/) | Product inception (00–07), the [design brief](docs/DESIGN-BRIEF.md), and the [implementation plan](docs/IMPLEMENTATION-PLAN.md) |
 | [`docs/design/`](docs/design/) | `PageAgent.dc.html` imported from Claude Design — the visual source of truth |
-| [`public/`](public/) | Phase 0 static, loadable-unpacked extension (manifest, side panel, service worker, icons) |
-| [`src/`](src/) | TypeScript source (grows from Phase 1) |
+| [`src/`](src/) | React + TypeScript source — side panel, service worker, content/main-world scripts, shared lib |
+| `dist/` | Build output — load **this** unpacked (git-ignored) |
+| [`public/icons/`](public/icons/) | Extension icons (copied into the build) |
 | [`spikes/`](spikes/) | Throwaway derisking probes (Prompt-API-in-side-panel; element-handle re-resolution) |
 
 ### The product docs (read in order)

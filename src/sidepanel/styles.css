@@ -1,7 +1,6 @@
-/* PageAgent — Phase 0 static shell styles.
-   Values are provisional-from-design (docs/design/PageAgent.dc.html); the real
-   tokenized design system lands in Phase 2 with inlined fonts. System font stack
-   is used here deliberately — no external/CDN fonts (MV3 CSP + on-device ethos). */
+/* PageAgent side panel — Phase 1. Provisional-from-design values (see
+   docs/design/PageAgent.dc.html); the tokenized design system + inlined fonts
+   land in Phase 2. System font stack for now — no external/CDN fonts. */
 
 :root,
 :root[data-theme='dark'] {
@@ -14,6 +13,9 @@
   --brand: #33cfbd;
   --brand-dim: #1e9c90;
   --focus: #33cfbd;
+  --verdant: #46c07e;
+  --amber: #e4a63a;
+  --halt: #e5645a;
 }
 
 :root[data-theme='light'] {
@@ -26,6 +28,9 @@
   --brand: #0f9c8e;
   --brand-dim: #0a756b;
   --focus: #0f9c8e;
+  --verdant: #1e874a;
+  --amber: #b5730a;
+  --halt: #b03a2e;
 }
 
 * {
@@ -33,31 +38,29 @@
   margin: 0;
   padding: 0;
 }
-
 html,
-body {
+body,
+#root {
   height: 100%;
 }
-
 body {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
   background: radial-gradient(900px 500px at 75% -10%, var(--surface-2) 0%, var(--bg) 60%);
   color: var(--ink);
-  font-family:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   font-size: 14px;
   line-height: 1.5;
 }
+.pa {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
 
-/* Focus is never suppressed — flagship a11y (WCAG 2.4.13). */
 :focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 2px;
   border-radius: 4px;
 }
-
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -67,23 +70,6 @@ body {
   white-space: nowrap;
 }
 
-.skip-link {
-  position: absolute;
-  left: -999px;
-  top: 8px;
-  z-index: 10;
-  background: var(--brand);
-  color: #04110f;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-weight: 600;
-  text-decoration: none;
-}
-.skip-link:focus {
-  left: 8px;
-}
-
-/* Header ------------------------------------------------------------------ */
 .pa-header {
   display: flex;
   align-items: center;
@@ -135,14 +121,46 @@ body {
 }
 .pa-locus-label {
   font-size: 12px;
-  color: var(--ink);
-}
-.pa-locus-sub {
-  font-size: 11px;
-  color: var(--muted);
 }
 
-/* Tabs -------------------------------------------------------------------- */
+.pa-capability {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+}
+.pa-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--muted);
+}
+.pa-dot--available {
+  background: var(--verdant);
+}
+.pa-dot--downloadable,
+.pa-dot--downloading {
+  background: var(--amber);
+}
+.pa-dot--unavailable {
+  background: var(--halt);
+}
+.pa-link {
+  appearance: none;
+  border: none;
+  background: none;
+  color: var(--brand);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+  padding: 4px;
+  min-height: 32px;
+}
+
 .pa-tabs {
   display: flex;
   gap: 2px;
@@ -177,14 +195,13 @@ body {
   margin-left: 4px;
 }
 
-/* Body -------------------------------------------------------------------- */
 .pa-body {
   flex: 1 1 auto;
   overflow: auto;
   padding: 18px 16px;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 .pa-hello-title {
   font-size: 18px;
@@ -192,21 +209,7 @@ body {
   letter-spacing: -0.01em;
 }
 .pa-hello-lead {
-  margin-top: 6px;
-  color: var(--ink);
-}
-.pa-hello-note {
-  margin-top: 8px;
   color: var(--muted);
-  font-size: 12.5px;
-}
-kbd {
-  font: inherit;
-  font-size: 11px;
-  border: 1px solid var(--line);
-  border-radius: 4px;
-  padding: 0 5px;
-  background: var(--surface);
 }
 .pa-log {
   list-style: none;
@@ -214,7 +217,7 @@ kbd {
   flex-direction: column;
   gap: 8px;
 }
-.pa-log li {
+.pa-msg {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -222,7 +225,6 @@ kbd {
   font-size: 13px;
 }
 
-/* Footer / composer ------------------------------------------------------- */
 .pa-footer {
   border-top: 1px solid var(--line);
   padding: 10px 12px 12px;
