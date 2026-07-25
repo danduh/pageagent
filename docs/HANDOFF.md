@@ -9,17 +9,23 @@ API) operate the page via a **Chat** (later voice) assistant. Nothing leaves the
 Product docs: `docs/00`–`07`. Design: `docs/DESIGN-BRIEF.md` + `docs/design/PageAgent.dc.html`.
 
 ## ⚠️ Current honest state (this is the important part)
-**Scope A (Phases 0–5) is DONE and merged — but it is ALL A UI PROTOTYPE ON MOCK FIXTURES.**
-There is **no real intelligence and nothing touches a real page**:
-- The "Chat" is a **puppet**: `src/fixtures/index.ts` keyword-matches ~5 hardcoded phrases (`rerun the failed
-  jobs`, `turn off marketing emails`, `where do I turn off two-factor`, `delete`, `export`) and replays a
-  canned turn sequence. The Confirm-gate is triggered by a keyword classifier (`src/safety/classifier.ts`).
-- Tools/Scan are mock tool-sets (`SPARSE_TOOLS`, `DENSE_TOOLS`), not read from a live DOM.
-- The on-device model is **not wired** to anything (capability detection exists but the loop is scripted).
+**Scope A (Phases 0–6) + Scope B Phases 7 & 9 are DONE. It is NO LONGER a puppet — it runs a real,
+confirmed action end-to-end on a live page, on-device.** What's real now:
+- **Phase 7 (merged, #49):** real DOM scan (`src/content/scanner.ts`) + tool-gen (`src/engine/toolgen.ts`)
+  of the LIVE active tab, behind the same `EnginePort`. The stub still drives tests + the dev gallery.
+- **Phase 9 (this branch / PR):** the **on-device capped `INTENT_SCHEMA` loop** (`src/engine/agentLoop.ts`)
+  picks ONE tool → tiers it → gates a destructive action (locate-or-decline dry-run first) → executes against
+  a **re-resolved live element** (`src/content/resolve.ts` + `execute.ts`) → reports on the certainty ladder
+  with a per-turn one-tap reverse. Verified live: "turn off marketing emails" → toggles the real checkbox →
+  "Done — it's now off." + working undo. A 10-agent adversarial-review workflow found 6 real safety defects,
+  all fixed + tested (85 tests green).
+- The Scope-A **stub is still the fixtures puppet** (`src/fixtures/index.ts`, `src/safety/classifier.ts`) —
+  it now only runs in tests + the dev gallery; the loaded extension uses the live engine.
 
-The user (rightly) reacted to this feeling like a fake demo. **The agreed next move is option (A): make it
-real** — a thin end-to-end slice that actually scans a live page, generates tools, and uses the on-device
-model to run one, on a real page. That is Scope B (Phases 7–9).
+**Still stubbed/deferred (Phase 10+):** Execute-tab per-tool Run (Chat is the wired path); WebMCP fusion
+(8.1 — declared `document.modelContext` tools are read but not yet merged); multi-step sequencing (10.1);
+cloud fallback (10.3); embeddings top-k (11.1); voice + profiles (11.2/11.3); least-privilege `activeTab`
+injection (ADR 0001 fast-follow). See `docs/IMPLEMENTATION-PLAN.md` Phases 10–11.
 
 ## The linchpin: the `EnginePort` seam
 Everything in the panel talks to the engine through ONE interface — swap the mock for the real engine here

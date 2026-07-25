@@ -107,24 +107,28 @@ export function accessibleName(el: Element): string {
   return '';
 }
 
+const NON_LABEL_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea', 'option']);
+const INTERACTIVE_ROLE = /^(button|link|checkbox|radio|switch|tab|menuitem|combobox|listbox|textbox|searchbox|option|slider)/;
+
+/** A preceding element is "label-like" only if it is itself non-interactive text. */
+function isLabelLike(el: Element): boolean {
+  if (NON_LABEL_TAGS.has(el.tagName.toLowerCase())) return false;
+  const role = el.getAttribute('role');
+  if (role && INTERACTIVE_ROLE.test(role.trim().toLowerCase())) return false;
+  return true;
+}
+
 /**
- * Short disambiguating text near a control — used to name honestly-unlabeled
- * controls ("near 'Delete'") and to break fingerprint ties. Deliberately conservative:
- * a preceding sibling's text, else the parent's own direct text, truncated.
+ * Short disambiguating text near a control — used to name honestly-unlabeled controls
+ * ("near 'Delete'") and to break fingerprint ties. Deliberately a MERIT signal, not a
+ * positional one: only a label-like (non-interactive) PRECEDING sibling counts. It must
+ * NOT aggregate parent/sibling text — that would leak an adjacent control's words and
+ * let two otherwise-identical controls be told apart by position (the Spike-B danger).
  */
 export function nearbyText(el: Element): string {
   const prev = el.previousElementSibling;
-  if (prev) {
+  if (prev && isLabelLike(prev)) {
     const t = normalizeName(prev.textContent);
-    if (t) return t.slice(0, 40);
-  }
-  const parent = el.parentElement;
-  if (parent) {
-    // Direct text nodes of the parent, ignoring the control's own text.
-    const own = normalizeName(el.textContent);
-    const parentText = normalizeName(parent.textContent);
-    const trimmed = own && parentText.startsWith(own) ? parentText.slice(own.length) : parentText;
-    const t = normalizeName(trimmed);
     if (t) return t.slice(0, 40);
   }
   return '';

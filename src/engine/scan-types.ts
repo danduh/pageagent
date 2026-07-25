@@ -61,3 +61,35 @@ export interface RawScanResult {
   coverage: Coverage;
   note?: string;
 }
+
+/**
+ * What the executor OBSERVED about the page after acting (Step 9.1). `verified` is
+ * true only when a concrete, checkable change was seen (toggle flipped, field now
+ * holds the value, URL changed, a confirmation appeared) → the ONLY thing that earns
+ * a "Done". Otherwise the action was dispatched but its effect is unconfirmed.
+ */
+export interface ObservedChange {
+  /** Plain sentence describing the observed post-state, e.g. 'the field now shows "failed".' */
+  summary: string;
+  /** True only when a concrete page-state change was observed (→ certainty 'done'). */
+  verified: boolean;
+  /** True when the action navigated / changed the URL. */
+  urlChanged?: boolean;
+}
+
+/**
+ * The outcome the content-script executor reports for one action (Steps 8.4/8.5/9.1).
+ * `declined` is the locate-or-decline fail-safe: the element could not be re-resolved
+ * and verified, or was not live/visible/enabled — we did NOTHING rather than act on the
+ * wrong node (Spike B). `reason` in `declined` reuses the re-resolution + liveness words.
+ */
+export type ExecOutcome =
+  // Dry-run success: the element re-resolved + verified uniquely and is actionable.
+  // `label` is its FRESH on-page name/text for a truthful gate preview (locate-or-decline).
+  | { kind: 'located'; label: string }
+  | { kind: 'executed'; observed: ObservedChange }
+  | {
+      kind: 'declined';
+      reason: 'not-found' | 'ambiguous' | 'stale' | 'hidden' | 'disabled' | 'unknown-handle';
+      detail?: string;
+    };

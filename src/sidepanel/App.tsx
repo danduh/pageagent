@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createStubEngine } from '../engine/stub';
-import { createLiveEngine, isExtensionRuntime } from '../engine/live';
-import type { Turn } from '../engine/port';
+import { createLiveEngine, isExtensionRuntime, type LiveEngine } from '../engine/live';
+import type { RunHost, Turn } from '../engine/port';
 import type {
   FreshnessState,
   GatePreview,
@@ -51,6 +51,9 @@ export function App() {
   const [, setCapability] = useState<CapabilityState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Resolves the OPEN Confirm-gate's promise: the live loop awaits host.confirm here, so
+  // approve/cancel/Stop flow the user's decision back into the running loop.
+  const gateResolverRef = useRef<((ok: boolean) => void) | null>(null);
 
   const page: PageInfo = engine.page();
   const tools: Tool[] = engine.tools();
@@ -73,12 +76,33 @@ export function App() {
     };
   }, [engine]);
 
+  // Resolve an open gate promise (live loop) and clear the gate. No-op for the stub gate.
+  const resolveGate = useCallback((ok: boolean) => {
+    const r = gateResolverRef.current;
+    gateResolverRef.current = null;
+    setPendingGate(null);
+    r?.(ok);
+  }, []);
+
   const stop = useCallback(() => {
     abortRef.current?.abort();
+    if (gateResolverRef.current) resolveGate(false); // Stop reaches inside an open gate too
     setActing(false);
     setStatus('Stopped.');
     inputRef.current?.focus();
-  }, []);
+  }, [resolveGate]);
+
+  // The loop calls back here for a Tier-1/2 action: show the gate, await the decision.
+  const host: RunHost = useMemo(
+    () => ({
+      confirm: (preview) =>
+        new Promise<boolean>((resolve) => {
+          gateResolverRef.current = resolve;
+          setPendingGate(preview);
+        }),
+    }),
+    []
+  );
 
   const send = useCallback(
     (text: string) => {
@@ -102,7 +126,7 @@ export function App() {
       setStatus('Working on your device…');
       void (async () => {
         try {
-          for await (const turn of engine.runIntent(trimmed, controller.signal)) {
+          for await (const turn of engine.runIntent(trimmed, controller.signal, host)) {
             if (controller.signal.aborted) break;
             setTurns((prev) => [...prev, turn]);
           }
@@ -115,7 +139,7 @@ export function App() {
         }
       })();
     },
-    [acting, engine, pendingGate, live]
+    [acting, engine, pendingGate, live, host]
   );
 
   const rescan = useCallback(() => {
@@ -165,21 +189,53 @@ export function App() {
     [pendingGate, live]
   );
 
-  const reverse = useCallback((turnId: string) => {
-    setTurns((prev) => [
-      ...prev,
-      {
-        id: `rev-${turnId}`,
-        kind: 'report',
-        certainty: 'done',
-        text: 'Reversed — turned "Marketing emails" back on.',
-      },
-    ]);
-  }, []);
+  const reverse = useCallback(
+    (turnId: string) => {
+      // Live: re-run the inverse of THIS turn's action through the real execute pipeline.
+      if (live && 'reverseAction' in engine) {
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setActing(true);
+        setStatus('Working on your device…');
+        void (async () => {
+          try {
+            for await (const turn of (engine as LiveEngine).reverseAction(turnId, controller.signal)) {
+              if (controller.signal.aborted) break;
+              setTurns((prev) => [...prev, turn]);
+            }
+          } finally {
+            if (!controller.signal.aborted) {
+              setActing(false);
+              setStatus('');
+            }
+            inputRef.current?.focus();
+          }
+        })();
+        return;
+      }
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: `rev-${turnId}`,
+          kind: 'report',
+          certainty: 'done',
+          text: 'Reversed — turned "Marketing emails" back on.',
+        },
+      ]);
+    },
+    [live, engine]
+  );
 
   const choice = useCallback((picked: string) => send(picked), [send]);
 
   const approveGate = useCallback(() => {
+    // Live: hand the approval to the awaiting loop, which executes + reports the outcome.
+    if (gateResolverRef.current) {
+      resolveGate(true);
+      inputRef.current?.focus();
+      return;
+    }
+    // Stub: scripted "Done" report.
     setPendingGate((g) => {
       if (g) {
         setTab('chat');
@@ -196,9 +252,16 @@ export function App() {
       return null;
     });
     inputRef.current?.focus();
-  }, []);
+  }, [resolveGate]);
 
   const cancelGate = useCallback(() => {
+    // Live: the loop reports "didn't" itself when the gate resolves false.
+    if (gateResolverRef.current) {
+      resolveGate(false);
+      inputRef.current?.focus();
+      return;
+    }
+    // Stub: scripted "didn't" report.
     setPendingGate(null);
     setTurns((prev) => [
       ...prev,
@@ -210,7 +273,7 @@ export function App() {
       },
     ]);
     inputRef.current?.focus();
-  }, []);
+  }, [resolveGate]);
 
   // Cloud fallback: an explicit, per-use opt-in. It flips the locus off-device.
   const useCloudOnce = useCallback(() => {
