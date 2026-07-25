@@ -6,6 +6,7 @@ import {
   outcomeToReport,
   parseIntent,
   runAgentLoop,
+  runSelectedTool,
   type GateOutcome,
   type LoopDeps,
 } from './agentLoop';
@@ -81,6 +82,14 @@ describe('outcomeToReport — certainty ladder', () => {
     const r = outcomeToReport('t3', t, 1, declined);
     expect(r.certainty).toBe('couldnt');
     expect(r.reverse).toBeUndefined();
+  });
+
+  it('a lost connection reads as a reload hint, not "the page changed"', () => {
+    const declined: ExecOutcome = { kind: 'declined', reason: 'disconnected', detail: 'no content script' };
+    const r = outcomeToReport('t6', t, 0, declined);
+    expect(r.certainty).toBe('couldnt');
+    expect(r.text).toMatch(/connection/i);
+    expect(r.text).not.toMatch(/page changed/i);
   });
 
   it('offers NO reverse for a DECLARED tool, even if its site-returned summary reads like a toggle', () => {
@@ -214,6 +223,37 @@ describe('runAgentLoop', () => {
       }))
     );
     expect(registerReverse).not.toHaveBeenCalled();
+  });
+
+  // runSelectedTool is the pipeline BOTH Chat and the Execute-tab Run go through.
+  it('runSelectedTool — Tier 0 executes directly (no gate) → Done', async () => {
+    const GO = tool({ id: 'click_go', name: 'Go', actionType: 'click' });
+    const gate = vi.fn(async (): Promise<GateOutcome> => ({ decision: 'approved' }));
+    const execute = vi.fn(async (): Promise<ExecOutcome> => ({ kind: 'executed', observed: { summary: 'ok.', verified: true } }));
+    const turns = await collect(runSelectedTool(GO, {}, deps({ tools: [GO], brain: brainSaying('{}'), gate, execute })));
+    expect(gate).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledOnce();
+    expect(turns.at(-1)?.certainty).toBe('done');
+  });
+
+  it('runSelectedTool — Tier 1 gates first; a cancelled gate runs nothing → "didn’t"', async () => {
+    const DEL = tool({ id: 'click_del', name: 'Delete', actionType: 'click', risk: 1 });
+    const execute = vi.fn();
+    const turns = await collect(
+      runSelectedTool(DEL, {}, deps({ tools: [DEL], brain: brainSaying('{}'), gate: async () => ({ decision: 'cancelled' }), execute }))
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(turns.at(-1)?.certainty).toBe('didnt');
+  });
+
+  it('runSelectedTool — a not-locatable gate declines without executing → "couldnt"', async () => {
+    const DEL = tool({ id: 'click_del', name: 'Delete', actionType: 'click', risk: 1 });
+    const execute = vi.fn();
+    const turns = await collect(
+      runSelectedTool(DEL, {}, deps({ tools: [DEL], brain: brainSaying('{}'), gate: async () => ({ decision: 'declined', reason: 'not-found' }), execute }))
+    );
+    expect(execute).not.toHaveBeenCalled();
+    expect(turns.at(-1)?.certainty).toBe('couldnt');
   });
 
   it('honours Stop: an already-aborted signal yields nothing and never executes', async () => {

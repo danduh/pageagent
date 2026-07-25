@@ -16,8 +16,10 @@ import {
   INTENT_SCHEMA,
   outcomeToReport,
   runAgentLoop,
+  runSelectedTool,
   type GateOutcome,
   type LoopDeps,
+  type ToolRunDeps,
 } from './agentLoop';
 import {
   PA_MSG,
@@ -44,9 +46,15 @@ function getLanguageModel(): LanguageModelGlobal | null {
   return g.LanguageModel ?? g.ai?.languageModel ?? null;
 }
 
-/** The live engine also exposes reverseAction (beyond EnginePort) for the trust-ledger undo. */
+/** Beyond EnginePort: the trust-ledger undo + a direct Execute-tab tool run. */
 export type LiveEngine = EnginePort & {
   reverseAction(turnId: string, signal: AbortSignal): AsyncIterable<Turn>;
+  runTool(
+    tool: Tool,
+    value: string | undefined,
+    host: RunHost,
+    signal: AbortSignal
+  ): AsyncIterable<Turn>;
 };
 
 /** True only inside the loaded extension (real tabs). Tests/gallery → stub. */
@@ -117,12 +125,14 @@ export function createLiveEngine(): LiveEngine {
         name,
         args,
       });
-      if (!resp.ok) return { kind: 'declined', reason: 'stale', detail: resp.reason };
+      // The wire round-trip failed (the MAIN-world island didn't answer) — a connection
+      // problem, not DOM staleness.
+      if (!resp.ok) return { kind: 'declined', reason: 'disconnected', detail: resp.reason };
       // A site tool runs its OWN handler; we can't diff the DOM for it. interpretDeclaredResult
       // reads the return honestly — a failure signal is NEVER reported as Done (review finding).
       return { kind: 'executed', observed: interpretDeclaredResult(resp.result) };
     } catch (e) {
-      return { kind: 'declined', reason: 'stale', detail: (e as Error).message };
+      return { kind: 'declined', reason: 'disconnected', detail: (e as Error).message };
     }
   }
 
@@ -141,11 +151,13 @@ export function createLiveEngine(): LiveEngine {
       if (!resp.ok) return { kind: 'declined', reason: 'unknown-handle', detail: resp.reason };
       return resp.outcome;
     } catch (e) {
-      return { kind: 'declined', reason: 'stale', detail: (e as Error).message };
+      // chrome.tabs.sendMessage rejects when there's no content script on the tab — the
+      // page needs a reload after the extension reloaded, or it's a restricted page.
+      return { kind: 'declined', reason: 'disconnected', detail: (e as Error).message };
     }
   }
 
-  function buildPreview(tool: Tool, value: string | undefined, liveLabel: string, userText: string): GatePreview {
+  function buildPreview(tool: Tool, value: string | undefined, liveLabel: string, provenance: string): GatePreview {
     const tier: 1 | 2 = tool.risk === 2 ? 2 : 1;
     return {
       tier,
@@ -157,11 +169,46 @@ export function createLiveEngine(): LiveEngine {
         tier === 2
           ? 'This is a high-consequence action and can’t be undone from here.'
           : 'This may be hard to undo.',
-      provenance: `Because you asked: “${userText.trim()}”`,
+      provenance,
       reacknowledge: tier === 2 ? (value && value.trim() ? value : liveLabel) : undefined,
       proceedLabel: tool.name,
       cancelLabel: 'Don’t do it',
       locatable: true,
+    };
+  }
+
+  /** The gate + execute deps shared by the Chat loop and a direct Execute-tab run. */
+  function makeToolRunDeps(
+    host: RunHost,
+    signal: AbortSignal,
+    provenanceFor: (tool: Tool) => string
+  ): ToolRunDeps {
+    return {
+      classifyTier: (tool) => tool.risk,
+      gate: async (tool, args): Promise<GateOutcome> => {
+        const value = typeof args.value === 'string' ? args.value : undefined;
+        if (tool.source === 'declared') {
+          // A site-declared tool is "located" via the WebMCP API — no DOM dry-run.
+          if (signal.aborted) return { decision: 'cancelled' };
+          const shown = value ?? JSON.stringify(args);
+          const ok = await host.confirm(buildPreview(tool, shown, tool.name, provenanceFor(tool)));
+          return { decision: ok ? 'approved' : 'cancelled' };
+        }
+        // Locate-or-decline BEFORE the gate (Step 8.5): a dry-run re-resolve + verify.
+        const dry = await bridgeExecute(tool, value, true);
+        if (signal.aborted) return { decision: 'cancelled' };
+        if (dry.kind === 'declined') return { decision: 'declined', reason: dry.reason, detail: dry.detail };
+        const label = dry.kind === 'located' ? dry.label : tool.name;
+        const ok = await host.confirm(buildPreview(tool, value, label, provenanceFor(tool)));
+        return { decision: ok ? 'approved' : 'cancelled' };
+      },
+      execute: (tool, args): Promise<ExecOutcome> => {
+        if (tool.source === 'declared') return invokeDeclaredTool(tool.id, args);
+        const value = typeof args.value === 'string' ? args.value : undefined;
+        return bridgeExecute(tool, value, false);
+      },
+      registerReverse: (id, tool, value) => reverseActions.set(id, { tool, value }),
+      signal,
     };
   }
 
@@ -255,37 +302,24 @@ export function createLiveEngine(): LiveEngine {
         brain: {
           prompt: (t: string) => brainSession.prompt(t, { responseConstraint: INTENT_SCHEMA }),
         },
-        classifyTier: (tool) => tool.risk,
-        gate: async (tool, args): Promise<GateOutcome> => {
-          const value = typeof args.value === 'string' ? args.value : undefined;
-          if (tool.source === 'declared') {
-            // A site-declared tool is "located" via the WebMCP API — no DOM dry-run. Preview
-            // from its own metadata; the value line shows the args the model chose.
-            if (signal.aborted) return { decision: 'cancelled' };
-            const shown = value ?? JSON.stringify(args);
-            const ok = await host.confirm(buildPreview(tool, shown, tool.name, text));
-            return { decision: ok ? 'approved' : 'cancelled' };
-          }
-          // Locate-or-decline BEFORE the gate (Step 8.5): a dry-run re-resolve + verify.
-          const dry = await bridgeExecute(tool, value, true);
-          // Stop may have landed during the dry-run round-trip — don't open a gate after
-          // Stop (review finding: an orphaned gate over the "Stopped" UI).
-          if (signal.aborted) return { decision: 'cancelled' };
-          if (dry.kind === 'declined') return { decision: 'declined', reason: dry.reason, detail: dry.detail };
-          const label = dry.kind === 'located' ? dry.label : tool.name;
-          const ok = await host.confirm(buildPreview(tool, value, label, text));
-          return { decision: ok ? 'approved' : 'cancelled' };
-        },
-        execute: (tool, args): Promise<ExecOutcome> => {
-          if (tool.source === 'declared') return invokeDeclaredTool(tool.id, args);
-          const value = typeof args.value === 'string' ? args.value : undefined;
-          return bridgeExecute(tool, value, false);
-        },
-        registerReverse: (id, tool, value) => reverseActions.set(id, { tool, value }),
-        signal,
+        ...makeToolRunDeps(host, signal, () => `Because you asked: “${text.trim()}”`),
       };
 
       yield* runAgentLoop(text, deps);
+    },
+
+    // Run ONE tool the user chose by hand from the Tools tab (Execute). Same tier → gate →
+    // execute → report pipeline as Chat — including invoking a site-declared WebMCP tool.
+    async *runTool(
+      tool: Tool,
+      value: string | undefined,
+      host: RunHost,
+      signal: AbortSignal
+    ): AsyncIterable<Turn> {
+      if (signal.aborted) return;
+      const args: Record<string, unknown> = value != null && value !== '' ? { value } : {};
+      const deps = makeToolRunDeps(host, signal, (t) => `Because you ran “${t.name}” from the Tools list.`);
+      yield* runSelectedTool(tool, args, deps);
     },
 
     async *reverseAction(turnId: string, signal: AbortSignal): AsyncIterable<Turn> {
