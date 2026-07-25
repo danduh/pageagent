@@ -1,141 +1,81 @@
 # PageAgent — session handoff
 
-**Read this + `docs/IMPLEMENTATION-PLAN.md` first.** This resumes a long build after a context clear.
+**Read this first, then `docs/IMPLEMENTATION-PLAN.md`.** Resumes a long build after a context clear.
+Last updated after Phase 8.4 merged (main `9e1d7cd`). Repo `danduh/pageagent`.
 
 ## What PageAgent is
-A Chrome MV3 extension that "turns any web page into something you can talk to": scan the current page's
-DOM → manufacture a **Tool** per actionable element → let Chrome's **on-device** LLM (Gemini Nano / Prompt
-API) operate the page via a **Chat** (later voice) assistant. Nothing leaves the machine in the core loop.
-Product docs: `docs/00`–`07`. Design: `docs/DESIGN-BRIEF.md` + `docs/design/PageAgent.dc.html`.
+Chrome MV3 extension that "turns any web page into something you can talk to": scan the current page's
+DOM → manufacture a **Tool** per actionable control → let Chrome's **on-device** LLM (Gemini Nano / Prompt
+API) operate the page via **Chat** (later voice). Nothing leaves the machine in the core loop. Also **fuses**
+the site's OWN declared WebMCP tools (`document.modelContext`). Product docs `docs/00`–`07`; design
+`docs/DESIGN-BRIEF.md`; engine topology decision `docs/adr/0001-…`.
 
-## ⚠️ Current honest state (this is the important part)
-**Scope A (Phases 0–6) + Scope B Phases 7 & 9 are DONE. It is NO LONGER a puppet — it runs a real,
-confirmed action end-to-end on a live page, on-device.** What's real now:
-- **Phase 7 (merged, #49):** real DOM scan (`src/content/scanner.ts`) + tool-gen (`src/engine/toolgen.ts`)
-  of the LIVE active tab, behind the same `EnginePort`. The stub still drives tests + the dev gallery.
-- **Phase 9 (this branch / PR):** the **on-device capped `INTENT_SCHEMA` loop** (`src/engine/agentLoop.ts`)
-  picks ONE tool → tiers it → gates a destructive action (locate-or-decline dry-run first) → executes against
-  a **re-resolved live element** (`src/content/resolve.ts` + `execute.ts`) → reports on the certainty ladder
-  with a per-turn one-tap reverse. Verified live: "turn off marketing emails" → toggles the real checkbox →
-  "Done — it's now off." + working undo. A 10-agent adversarial-review workflow found 6 real safety defects,
-  all fixed + tested (85 tests green).
-- The Scope-A **stub is still the fixtures puppet** (`src/fixtures/index.ts`, `src/safety/classifier.ts`) —
-  it now only runs in tests + the dev gallery; the loaded extension uses the live engine.
+## ✅ Current state — it is REAL, end-to-end, on-device (not a puppet)
+All merged to `main`. **104 tests green**; panel bundle ~253 KB.
+- **Spike A2 (#47):** Prompt-API host = the **side panel** (create() works there). Native tool-calling **unusable** on Nano → manual `INTENT_SCHEMA` loop. `spikes/FINDINGS.md`.
+- **Phase 7 (#49):** real DOM **scan** + **tool-gen** of the live active tab, behind `EnginePort`.
+- **Phase 9 (#51):** the **on-device capped loop** — type intent → model picks ONE tool → tier → gate (locate-or-decline) → execute on a **re-resolved** live element → certainty-ladder report + one-tap reverse. First confirmed action, on-device. (Adversarial review found + fixed **6** real safety bugs.)
+- **Phase 8.1 (#53):** **WebMCP fusion** — read the page's declared `document.modelContext` tools via `getTools()`, merge with DOM tools (site-declared wins), invoke via `executeTool`. Declared tools badged "From this site" + an MCP icon. (Review found + fixed **7** real bugs incl. a postMessage-forgery hole.)
+- **Phase 8.4 (#55):** the **Tools-tab "Run"** now executes for real (was an honest hand-back) — same tier→gate→execute→report pipeline as Chat, incl. declared tools. Shared `runSelectedTool`.
 
-**Still stubbed/deferred (Phase 10+):** Execute-tab per-tool Run (Chat is the wired path); WebMCP fusion
-(8.1 — declared `document.modelContext` tools are read but not yet merged); multi-step sequencing (10.1);
-cloud fallback (10.3); embeddings top-k (11.1); voice + profiles (11.2/11.3); least-privilege `activeTab`
-injection (ADR 0001 fast-follow). See `docs/IMPLEMENTATION-PLAN.md` Phases 10–11.
+**The stub is still the fixtures puppet** (`src/fixtures/index.ts`, `src/safety/classifier.ts`) — it now only drives **tests + the dev gallery**; the loaded extension uses the **live engine** (`src/engine/live.ts`), selected in `App.tsx` via `isExtensionRuntime()`.
 
-## The linchpin: the `EnginePort` seam
-Everything in the panel talks to the engine through ONE interface — swap the mock for the real engine here
-and no surface changes:
-- `src/engine/port.ts` — `EnginePort`: `capability()`, `page()`, `scan(signal)`, `tools()`,
-  `runIntent(text, signal): AsyncIterable<Turn>`.
-- `src/engine/stub.ts` — `createStubEngine()` (the current mock, from fixtures).
-- `src/engine/types.ts` — Tool, ScanResult (ok/partial/failed), Coverage, GatePreview, ReResolution
-  (four-outcome union), Certainty, etc.
-- `src/sidepanel/App.tsx` — imports `createStubEngine`; owns all state + orchestration (send→runIntent,
-  Execute run→gate, availability/degraded, scan). **Scope B: introduce a real engine factory implementing
-  EnginePort and swap the import** (keep the stub for tests/gallery).
+## Architecture (the live path)
+`EnginePort` (`src/engine/port.ts`) is the ONE seam — `capability/page/scan/tools/runIntent(text,signal,host)`.
+`createLiveEngine()` returns `LiveEngine = EnginePort & { reverseAction, runTool }`.
+- **On-device brain** `src/engine/agentLoop.ts`: `runAgentLoop` (Chat) + the extracted **`runSelectedTool(tool,args,deps)`** — the shared tier→gate→execute→report tail used by BOTH Chat and the Execute-tab. `INTENT_SCHEMA`, `extractJsonFromResponse`/`coerceArgs`/`parseIntent`, `buildSystemPrompt` (page text is **inert data**, injection defence), `outcomeToReport`/`declineText`. `ToolRunDeps` ⊂ `LoopDeps`.
+- **Live engine** `src/engine/live.ts`: creates the Nano session eagerly (`ensureSession`, ~6 s cold warmup), `prompt(t,{responseConstraint:INTENT_SCHEMA})`. `makeToolRunDeps(host,signal,provenanceFor)` builds gate/execute that **branch on `tool.source`**: `manufactured` → `bridgeExecute` (DOM, over the message bus); `declared` → `invokeDeclaredTool` (WebMCP). Gate does a dry-run **locate-or-decline** before `host.confirm`.
+- **Content bridge** `src/content/content.ts` (isolated world): `scan`/`execute`/`execute-declared` handlers over `chrome.tabs.sendMessage`; relays declared invokes to the MAIN world over `window.postMessage` (guarded by `ev.source===window`). `src/content/main-world.ts`: reads `document.modelContext.getTools()` (+ re-reads on `toolchange`), invokes via `executeTool`. Protocol `src/content/messages.ts`.
+- **Scan/resolve/execute** `src/content/scanner.ts` (`walkDom`+`analyzeActionable`+`scanDom`), `accname.ts`, `resolve.ts` (`reResolve` four-outcome, decline-on-ambiguity), `execute.ts` (`executeAction` + observed before/after).
+- **Fusion** `src/engine/fusion.ts`: `declaredToTool` (+`humanize` before tiering), `mergeTools` (site-wins), `interpretDeclaredResult` (honest — a `{success:false}` return is never "Done"). Tool-gen `src/engine/toolgen.ts`. Types `src/engine/scan-types.ts` (`ScannedElement`, `ElementFingerprint`, `ExecOutcome` incl. `disconnected`, `DeclaredToolDef`, `ObservedChange`).
+- **App** `src/sidepanel/App.tsx`: engine selection; `send`→`runIntent`; `runTool`→`engine.runTool`; `reverse`→`reverseAction`; **gate-as-promise** (`host.confirm` sets `pendingGate` + resolves via `gateResolverRef` on approve/cancel/Stop); Stop/Escape.
 
-## THE NEXT TASK (option A — Scope B thin slice), from `docs/IMPLEMENTATION-PLAN.md`
-Build the real engine, thinnest vertical slice first (one real page → real tools → run one non-destructive
-click). Plan steps (in order):
-- **7.0** Permission + MV3 service-worker-lifecycle reconciliation (where the loop/state lives; abort survives
-  SW restart). **Prompt-API host document = the side panel — CONFIRMED (Spike A2, 2026-07-25; see below +
-  `spikes/FINDINGS.md`):** `create()` succeeds in the real side-panel document at the extension origin (Chrome
-  152, `available`). No offscreen document — panel hosts the loop + `LanguageModel` session; content script
-  scans/executes over the bus; abort channel is panel-local.
-- **7.1** Real capability detection (already have `src/lib/capabilities.ts` detect/provision split).
-- **7.2** Content-script + **MAIN-world** bridge (`src/content/content.ts`, `src/content/main-world.ts` are
-  stubs today) + a typed panel↔page message bus + tab-binding + an **abort/Stop channel**.
-- **7.3** DOM scan → actionable elements (open shadow roots + nested regions; honest coverage; a
-  re-resolvable handle per element) with a **scan-performance budget** on large pages.
-- **7.4** Tool generation (plain name from accessible-name/nearby-text; honest unlabeled per REQ-SCAN-3).
-- **8.1** WebMCP registration + read site-declared `document.modelContext` (fusion); internal registry as base.
-- **8.2** Re-scan/freshness + **stale-handle rejection** (dead handle → refuse, don't blind-click).
-- **8.3** Reversibility classifier + tier (replaces the mock `classifyTier` behind the same signature).
-- **8.4** Execute engine (click/type/choose/follow-link) with a **liveness re-check** (locate-or-decline).
-- **8.5** Confirm-gate wired to real DOM (truthful preview from live metadata; **decline if not locatable**).
-- **9.1b** Prompt-injection structural enforcement (page content only inert; every action user-provenanced).
-- **9.2** On-device **capped `INTENT_SCHEMA` loop** (understand→pick ONE tool→execute→observe→continue).
-  **Native tool-calling is NOT usable — use the manual loop** (see spike findings).
-- **9.3** Locus + interruptibility wired to the real loop. **Phase 9 = first confirmed action end-to-end.**
+## ⚠️ Hard-won gotchas (do NOT relearn these the hard way)
+1. **`document.modelContext.executeTool(tool, args)` wants `args` as a JSON STRING.** An object throws *"Failed to parse input arguments"*; results come back as JSON strings (parse them). Handled in `main-world.ts`. NOTE: the WebMCP **demo page** `windowai.danduh.me/webmcp` **polyfills** modelContext to accept objects — it lies about the native contract. Test on the local `demo/settings.html` (native API).
+2. **`executeTool` needs the live `RegisteredTool` OBJECT from `getTools()`, not a name** (name → *"not of type 'RegisteredTool'"*). MAIN world keeps the objects.
+3. **Only `document.modelContext` — NEVER `navigator.modelContext`** (deprecated Chrome 150+; user directive).
+4. **Native/function tool-calling is unusable on Nano** — always the manual structured-output loop.
+5. **Reloading the extension does NOT re-inject content scripts into open tabs** → the **page** must be reloaded, else execute fails with the `disconnected` "reload the page" message (not "stale").
+6. **`ev.source===window`** guard on both wire listeners is load-bearing security (blocks cross-origin subframe forgery) — the standard content-script↔page pattern; keep it.
+7. Confirm-gate invariants are load-bearing (`src/surfaces/ConfirmGate.test.tsx`) — never regress.
 
-## Spike findings that gate the engine (`spikes/FINDINGS.md`)
-Verified on Chrome 152 Canary (page context):
-- `LanguageModel` present; `availability()` → `"available"`; **`create()` works with no gesture when
-  available** (gesture only gates the download). `prompt()` ~1.3s.
-- **Native tool-calling is NOT usable** (model emits `run_jobs(...)` as text, never dispatches) → **keep the
-  manual capped `INTENT_SCHEMA` loop.** Structured output (`responseConstraint`) works but is NOT strictly
-  schema-faithful → **keep a robust parse/coerce step**.
-- Element re-resolution (Spike B): **multi-signal fingerprint** — primary = role + accessible-name re-query;
-  WeakRef = liveness-negative only; **DOM index never acts**; stable id confirmatory; **decline on ambiguity**.
-  Four-outcome union: `resolved-verified | not-found | ambiguous | stale`.
-- `document.modelContext` **present** on 152 (WebMCP surface exists) — but keep the internal registry primary.
-- **RESOLVED (Spike A2, 2026-07-25):** `create()` **succeeds in the REAL MV3 side-panel document** at the
-  extension origin (`chrome-extension://…`, Chrome 152, `availability: "available"`, ~1 ms create, ~1 s
-  steady-state routing, **~6 s one-time cold warmup** → create the session eagerly on panel open). **Native
-  tool-calling re-confirmed unusable at the extension origin** (0/3 dispatch across 5-tool, 5-tool-forceful,
-  36-tool — prose / raw `<|channel>thought` traces) → **manual `INTENT_SCHEMA` loop stays**; **INTENT_SCHEMA
-  routing was 4/4 correct incl. the 36-tool set.** Residual: no-gesture create() at the extension origin not
-  independently isolated (Claude-in-Chrome can't navigate `chrome-extension://` URLs) — strongly implied
-  (available-state gate doesn't apply); fresh-machine download UX still unobserved. Probe:
-  `spikes/spike-a2-followup/` (throwaway — safe to delete once this is internalized).
+## DECISION: agent-loop framework (researched + verified this session)
+**Keep the hand-rolled loop. Do NOT adopt LangChain / LangGraph / Vercel AI SDK.** Verified against real npm tarballs:
+- All frameworks' agent/tool abstractions require **native tool-calling** (dead on Nano); we'd hand-roll structured output regardless.
+- LangChain's `ChromeAI` adapter is in the **sunset `@langchain/community`** package and can't pass `responseConstraint`. AI SDK's `chrome-ai` targets the **deprecated 2024 `ai.assistant`** namespace + drags ~21 MB MediaPipe. Heavy bundles for zero real gain.
+- Our loop calls `prompt(text,{responseConstraint})` **directly — 0 KB, no adapter**. LangChain's own sunset note even recommends app-code/MCP tools — which is what we already do.
+- **For multi-step (10.1):** extend the async generator (0 KB), or add a tiny CSP-safe FSM **`robot3` (~1.5 KB)** / XState only if the step logic gets tangled. NOT full LangGraph.
 
-## Reuse (sibling repos referenced by the plan)
-- `/Users/danielos/dev/window-ai/chat`: `mcpAgentLoop.ts` (→ `INTENT_SCHEMA`, `extractJsonFromResponse`,
-  `coerceArgs`, `buildSystemPrompt`, `MAX_TOOL_CALLS`), `modelContext.ts`, `recipeTools.ts` (Tool contract),
-  `ApiStatus.tsx`/`MissingFlagBanner`, `Embeddings/*`, `mcp-probe.html` (fusion fixture).
-- `/Users/danielos/dev/e2e-ids-finder/src/manifest.json`: `trial_tokens` + `aiLanguageModelOriginTrial` pattern
-  (origin-trial token is env-injected at build via `PAGEAGENT_TRIAL_TOKEN`, never committed; see manifest.config.ts).
+## NEXT (pick one; user was leaning 10.1)
+- **10.1 Multi-step** *(recommended next)*: extend the loop to sequence steps — observe → **re-scan → re-plan** between actions, refuse stale tools, honour Stop, hand back honestly at a step cap. **Best-effort, capped** — single-action stays the reliable core. Build by extending `runAgentLoop` (loop over `runSelectedTool` with a re-scan + re-plan between); a per-step cap already exists (`MAX_TOOL_CALLS`). Add `robot3` only if needed.
+- **8.2 Freshness/stale**: header freshness machine (Fresh→Aging→Stale) on navigation/mutation/tab-switch; auto-invalidate the tool-set so a dead-handle tool refuses (the re-resolver already declines at act-time; this makes it proactive + visible).
+- **8.3 Real classifier**: replace the keyword mock (`src/safety/classifier.ts`) with action-type + origin-sensitivity + reversibility-confidence + the un-configurable Tier-2 hard-stop set. (Reviews already patched the worst keyword gaps.)
+Also loose ends: prettier declared-tool report (currently dumps raw JSON); least-privilege `activeTab` injection (ADR 0001 fast-follow); cloud fallback (10.3); embeddings top-k (11.1); voice/profiles (11.x).
 
-## Repo map (Scope-A, all real code, mock data)
-- `src/sidepanel/App.tsx` — orchestration; `main.tsx`, `styles.css` (shell), `index.html`.
-- `src/surfaces/` — Header, Chat, ConfirmGate, ProcessingLocus, ToolsSurface, ScanGen, AvailabilityBanner
-  (+ `contracts.ts` = frozen prop contracts; each has a co-located `.css`).
-- `src/components/` — `primitives.{tsx,css}` (Button incl. `firm` variant / Toggle / Tabs / ListRow / Field /
-  Badge / Chip / Banner / Card), `icons.tsx` (11 line icons, NO padlock/shield).
-- `src/styles/tokens.css` (two-tier tokens, both themes, 3 color jobs), `fonts.ts` (self-hosted woff2).
-- `src/engine/`, `src/fixtures/index.ts`, `src/safety/classifier.ts`, `src/lib/capabilities.ts`,
-  `src/background/service-worker.ts`, `src/content/{content,main-world}.ts`.
-- `manifest.config.ts` (CRXJS), `vite.config.ts`, `scripts/check-{contrast,cvd}.mjs`, `.github/workflows/ci.yml`.
+## How to test LIVE (needs the user's Chrome 152 + Nano)
+```bash
+npm run build                                   # → dist/
+(cd demo && python3 -m http.server 8792 &)      # serve the fixture
+```
+1. `chrome://extensions` → Load unpacked `dist/` (or reload ↻ after a rebuild).
+2. Open `http://localhost:8792/settings.html` — **then RELOAD that page** (content-script injection, gotcha #5).
+3. Panel (⌘⇧Y) auto-scans. `demo/settings.html` has DOM controls (checkboxes/buttons) + **5 registered WebMCP tools** (`listPreferences`, `setPreference`, `filterSettings`, `deactivateAccount` [Tier-2 gate], `exportData` [returns `{success:false}` → honest "did not complete"]).
+4. Chat: `turn off marketing emails` → flips the checkbox, "Done" + undo. Tools tab: Run any tool. Declared tools show the MCP icon + "From this site".
+The in-app preview browser is **Chromium 148 (no modelContext / no resident Nano)** — good only for UI/CSS smoke tests, NOT the model or WebMCP. Real model/fusion work must be driven on the user's real Chrome (via Claude-in-Chrome for probes, or the user for the panel — the side panel can't be automated).
 
 ## Conventions (do not regress)
 - TS strict + `verbatimModuleSyntax` (`import type`), `noUnusedLocals/Parameters` (prefix unused `_`), no `any`.
-- ESLint + `jsx-a11y`; CSS references **semantic tokens only — no raw hex** (raw hex lives only in tokens.css).
-- **Confirm-gate safety invariants are load-bearing — never regress** (`src/surfaces/ConfirmGate.test.tsx`):
-  initial focus on the SAFE action, Enter can't confirm (type=button, no form), Escape cancels, Tier-2 value
-  re-acknowledgment (comprehension, NO timer/press-and-hold), locate-or-decline, **Halt red only at Tier 2**.
-- Never oversell reliability/autonomy/privacy; no padlock/shield; meaning never by color/icon alone; ≥44px targets.
+- ESLint + `jsx-a11y`; CSS uses **semantic tokens only** (raw hex only in `src/styles/tokens.css`; e.g. brand = `--brand` / small-element `--brand-ink`).
+- Never oversell reliability/autonomy/privacy; no padlock/shield; meaning never by color/icon alone; ≥44px targets. `spikes/**` is lint/prettier-ignored.
 
-## Build / verify / run
+## Build / verify
 ```bash
-npm install
-npm run typecheck && npm run lint && npm run test && npm run build && npm run check:contrast && npm run format
+npm run typecheck && npm run lint && npm run test && npm run build
 ```
-Load: `npm run build` → `chrome://extensions` → Developer mode → Load unpacked → **`dist/`** → toolbar icon or
-⌘⇧Y. The **dev gallery** at the panel bottom (`▸ Screen gallery`) drives states: dense page, locus
-(on-device/unavailable/off-device → availability banner + degraded mode), gate triggers, clear transcript.
 
-## Process / GitHub (repo `danduh/pageagent`)
-- Issue-first; PRs link with **plain `Closes #n`** (⚠️ markdown-bold `**#n**` breaks GitHub auto-close — bit us
-  twice). Simple labels: feature/bug/design/docs/infra/ui/safety/a11y/engine/spike/epic/blocked. Branch
-  `feat|fix|docs|chore|spike/<slug>`. One PR per phase; squash-merge + delete branch.
-- **Open issues:** #7 (epic), #5/#6 (spikes), #10 (Canary follow-up — needs Claude-in-Chrome on user's Chrome),
-  #44/#45 (last Scope-A UI polish — fold into Phase 6). Everything Phases 0–5 is closed & merged.
+## Process / GitHub
+- **Issue-first**; branch `feat|fix|docs|chore/<slug>`; **one PR per phase**; PR body links **plain `Closes #n`** (⚠️ bold `**#n**` breaks auto-close). Labels: engine/safety/ui/a11y/spike/docs/… Squash-merge + delete branch. Merge only when the user asks.
+- Everything through **#55** is merged. Epic **#7** open.
 
-## The workflow-authoring pattern that worked (for future phases)
-Spine SOLO (types/contracts/engine/fixtures/App wiring) → a **Workflow** authors the separable presentational
-pieces in PARALLEL against the frozen contracts + an adversarial critic → I integrate, apply critic fixes,
-add committed tests, verify the gate, then verify LIVE in the preview browser (`preview_start name:"dist"`,
-resize 380px, navigate `/src/sidepanel/index.html`, drive via `preview_eval`). Note: workflow file output is
-HTML-escaped — `html.unescape()` before writing. Ultracode is on: lean into workflows for substantive phases.
-
-## Suggested first action in the fresh session
-**The Spike-A follow-up is DONE (2026-07-25) — host document = side panel, manual loop confirmed (above).**
-Start **Phase 7** with a thin slice: content-script MAIN-world bridge (7.2) → real DOM scan of a simple page
-(7.3) → tool-gen (7.4) → show REAL tools in the existing Tools surface. That alone makes it stop being a
-puppet. Then 8.4/8.5 (execute + gate on a real element) → 9.2 (the on-device loop — reuse `mcpAgentLoop.ts`
-nearly verbatim, session created eagerly in the side panel) for the first real confirmed action.
+## The pattern that worked — lean on it (ultracode is ON)
+For each phase: build the spine solo (contracts/engine/wiring) with **committed unit tests**, then **run an adversarial-review Workflow** over the safety-critical code (find → adversarially verify) BEFORE committing — it caught **13 real bugs** across Phases 9 + 8.1 that unit tests missed. Apply confirmed fixes + lock with tests, rebuild, then verify LIVE on `demo/settings.html`. Workflow research agents want `agentType:'general-purpose'` for web access.
