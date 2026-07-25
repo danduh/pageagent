@@ -26,9 +26,9 @@ interface ModelContextLike {
 }
 
 function getModelContext(): ModelContextLike | undefined {
-  const d = document as unknown as { modelContext?: ModelContextLike };
-  const n = navigator as unknown as { modelContext?: ModelContextLike };
-  return d.modelContext ?? n.modelContext;
+  // ONLY document.modelContext. navigator.modelContext is deprecated (Chrome 150+) and must
+  // never be used — WebMCP tools are per-Document.
+  return (document as unknown as { modelContext?: ModelContextLike }).modelContext;
 }
 
 /** Only the live RegisteredTool objects can be passed to executeTool — keep them here. */
