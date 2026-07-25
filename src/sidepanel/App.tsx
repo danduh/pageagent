@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createStubEngine } from '../engine/stub';
+import { createLiveEngine, isExtensionRuntime } from '../engine/live';
 import type { Turn } from '../engine/port';
 import type {
   FreshnessState,
@@ -24,13 +25,18 @@ type SurfaceTab = 'chat' | 'tools' | 'scan';
 
 export function App() {
   const [dense, setDense] = useState(false);
+  // The REAL engine drives the loaded extension (scans the live active tab); the stub
+  // drives tests + the dev gallery. Same EnginePort — no surface knows the difference.
+  const live = useMemo(() => isExtensionRuntime(), []);
   const engine = useMemo(
     () =>
-      createStubEngine({
-        page: dense ? PAGES.settings : PAGES.ci,
-        tools: dense ? DENSE_TOOLS : SPARSE_TOOLS,
-      }),
-    [dense]
+      live
+        ? createLiveEngine()
+        : createStubEngine({
+            page: dense ? PAGES.settings : PAGES.ci,
+            tools: dense ? DENSE_TOOLS : SPARSE_TOOLS,
+          }),
+    [live, dense]
   );
 
   const [tab, setTab] = useState<SurfaceTab>('chat');
@@ -80,10 +86,15 @@ export function App() {
       if (!trimmed || acting || pendingGate) return;
       setTab('chat');
       setTurns((prev) => [...prev, { id: `u-${prev.length}`, kind: 'user', text: trimmed }]);
-      const tier = classifyTier(trimmed);
-      if (tier === 1 || tier === 2) {
-        setPendingGate(buildGatePreview(trimmed, tier));
-        return;
+      // The Scope-A mock gate/classifier is a fixture-only demo. In the live engine the
+      // real Chat loop (with real tiering + gate) lands in Phase 9, so here we send every
+      // request straight to runIntent, which hands back honestly rather than faking a gate.
+      if (!live) {
+        const tier = classifyTier(trimmed);
+        if (tier === 1 || tier === 2) {
+          setPendingGate(buildGatePreview(trimmed, tier));
+          return;
+        }
       }
       const controller = new AbortController();
       abortRef.current = controller;
@@ -104,7 +115,7 @@ export function App() {
         }
       })();
     },
-    [acting, engine, pendingGate]
+    [acting, engine, pendingGate, live]
   );
 
   const rescan = useCallback(() => {
@@ -121,6 +132,21 @@ export function App() {
   const runTool = useCallback(
     (tool: Tool, value?: string) => {
       if (pendingGate) return;
+      // Live engine: scan + tool-gen are real, but EXECUTION isn't wired yet (Phase 8.4/8.5).
+      // Never claim a "Done" that didn't happen — hand back honestly that this is a
+      // browse-only view of the real scan.
+      if (live) {
+        setTab('chat');
+        setTurns((prev) => [
+          ...prev,
+          {
+            id: `x-${prev.length}`,
+            kind: 'agent',
+            text: `I found "${tool.name}" (${tool.provenance}) on this page, but I can't run it yet — running real tools lands in the next step. This is a truthful, browse-only view of what I actually scanned.`,
+          },
+        ]);
+        return;
+      }
       if (tool.risk >= 1) {
         setPendingGate(previewForTool(tool, value));
         return;
@@ -136,7 +162,7 @@ export function App() {
         },
       ]);
     },
-    [pendingGate]
+    [pendingGate, live]
   );
 
   const reverse = useCallback((turnId: string) => {
