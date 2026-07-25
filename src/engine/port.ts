@@ -9,7 +9,7 @@
 // NO change to any Scope-A component — they depend on this interface only.
 
 import type { CapabilityState } from '../lib/capabilities';
-import type { Certainty, PageInfo, Reverse, ScanResult, Tool } from './types';
+import type { Certainty, GatePreview, PageInfo, Reverse, ScanResult, Tool } from './types';
 
 /** A single transcript turn the Chat renders. */
 export type TurnKind = 'user' | 'agent' | 'report' | 'clarify' | 'page-quote';
@@ -28,6 +28,16 @@ export interface Turn {
   offDevice?: boolean;
 }
 
+/**
+ * The UI capabilities the engine's run-loop needs to call BACK into mid-flight — the
+ * one place control flows UI→engine. `confirm` pauses the loop on a Tier-1/2 action
+ * until the user resolves the Confirm-gate (true = approve, false = cancel/stop). The
+ * stub ignores it; the live loop awaits it before any gated execution.
+ */
+export interface RunHost {
+  confirm(preview: GatePreview): Promise<boolean>;
+}
+
 export interface EnginePort {
   /** Passive capability read (never downloads). */
   capability(): Promise<CapabilityState>;
@@ -41,6 +51,7 @@ export interface EnginePort {
    * Run the user's plain-language intent. Yields transcript turns as it progresses
    * — the capped intent-loop's steps in the real engine, scripted turns in the stub.
    * Honors `signal`: on abort it stops at the next safe point and stops yielding.
+   * `host.confirm` is awaited before any Tier-1/2 action (the Confirm-gate).
    */
-  runIntent(text: string, signal: AbortSignal): AsyncIterable<Turn>;
+  runIntent(text: string, signal: AbortSignal, host: RunHost): AsyncIterable<Turn>;
 }

@@ -11,7 +11,7 @@
 // All messages carry a namespaced tag so we never confuse them with unrelated
 // page or extension messages sharing the same channels.
 
-import type { RawScanResult } from '../engine/scan-types';
+import type { ExecOutcome, RawScanResult } from '../engine/scan-types';
 
 export const PA_MSG = 'pageagent/v1';
 
@@ -31,7 +31,19 @@ export interface AbortRequest {
   type: 'abort';
   requestId: string;
 }
-export type PanelToContent = ScanRequest | PageInfoRequest | AbortRequest;
+/** Dispatch ONE action against a previously-scanned handle. */
+export interface ExecuteRequest {
+  tag: typeof PA_MSG;
+  type: 'execute';
+  requestId: string;
+  /** Scan-local handle id from the last scan (maps to a stored fingerprint). */
+  handleId: string;
+  /** For type/choose actions: the verbatim value the user supplied. */
+  value?: string;
+  /** When true the content script re-resolves + verifies but does NOT act (gate preview). */
+  dryRun?: boolean;
+}
+export type PanelToContent = ScanRequest | PageInfoRequest | AbortRequest | ExecuteRequest;
 
 // --- Content script → panel (sendResponse payloads) -------------------------
 export type ScanResponse =
@@ -49,7 +61,9 @@ export interface PageInfoResponse {
   declaredToolNames: string[];
 }
 
-export type ContentResponse = ScanResponse | PageInfoResponse;
+export type ExecuteResponse = { ok: true; outcome: ExecOutcome } | { ok: false; reason: string };
+
+export type ContentResponse = ScanResponse | PageInfoResponse | ExecuteResponse;
 
 export function isPanelToContent(v: unknown): v is PanelToContent {
   return (
