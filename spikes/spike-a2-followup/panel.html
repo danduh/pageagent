@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Spike A2</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font: 13px/1.5 ui-monospace, 'SF Mono', Menlo, monospace;
+      }
+      body {
+        margin: 0;
+        padding: 12px;
+      }
+      h1 {
+        font-size: 14px;
+        margin: 0 0 8px;
+      }
+      button {
+        font: inherit;
+        padding: 8px 10px;
+        margin: 0 6px 6px 0;
+        min-height: 40px;
+        cursor: pointer;
+      }
+      #status {
+        margin: 8px 0;
+        font-weight: 600;
+      }
+      pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        background: rgba(127, 127, 127, 0.12);
+        padding: 10px;
+        border-radius: 6px;
+        max-height: 60vh;
+        overflow: auto;
+      }
+      .row {
+        margin-bottom: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Spike A2 — side-panel create() + tool-calling bake-off</h1>
+    <div class="row">
+      <button id="run">Run all</button>
+      <button id="copy">Copy JSON</button>
+    </div>
+    <div id="status">Idle. Click "Run all" (in the real side panel this is the authoritative test).</div>
+    <pre id="out"></pre>
+    <script src="panel.js"></script>
+  </body>
+</html>
