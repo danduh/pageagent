@@ -104,6 +104,15 @@ export type ExecOutcome =
   | { kind: 'executed'; observed: ObservedChange }
   | {
       kind: 'declined';
-      reason: 'not-found' | 'ambiguous' | 'stale' | 'hidden' | 'disabled' | 'unknown-handle';
+      reason:
+        | 'not-found'
+        | 'ambiguous'
+        | 'stale'
+        | 'hidden'
+        | 'disabled'
+        | 'unknown-handle'
+        // Lost the content-script/page round-trip (e.g. the page wasn't reloaded after
+        // the extension reloaded, or a site tool didn't respond) — NOT DOM staleness.
+        | 'disconnected';
       detail?: string;
     };

@@ -155,22 +155,33 @@ export function App() {
   // a reversible tool flows and reports. The report lands in the transcript (traceable).
   const runTool = useCallback(
     (tool: Tool, value?: string) => {
-      if (pendingGate) return;
-      // Live engine: scan + tool-gen are real, but EXECUTION isn't wired yet (Phase 8.4/8.5).
-      // Never claim a "Done" that didn't happen — hand back honestly that this is a
-      // browse-only view of the real scan.
-      if (live) {
+      if (pendingGate || acting) return;
+      // Live engine: run the chosen tool for real through the SAME tier → gate → execute →
+      // report pipeline as Chat (a destructive tool hits the Confirm-gate first; a declared
+      // WebMCP tool is invoked via the site's handler).
+      if (live && 'runTool' in engine) {
         setTab('chat');
-        setTurns((prev) => [
-          ...prev,
-          {
-            id: `x-${prev.length}`,
-            kind: 'agent',
-            text: `I found "${tool.name}" (${tool.provenance}) on this page, but I can't run it yet — running real tools lands in the next step. This is a truthful, browse-only view of what I actually scanned.`,
-          },
-        ]);
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setActing(true);
+        setStatus('Working on your device…');
+        void (async () => {
+          try {
+            for await (const turn of (engine as LiveEngine).runTool(tool, value, host, controller.signal)) {
+              if (controller.signal.aborted) break;
+              setTurns((prev) => [...prev, turn]);
+            }
+          } finally {
+            if (!controller.signal.aborted) {
+              setActing(false);
+              setStatus('');
+            }
+            inputRef.current?.focus();
+          }
+        })();
         return;
       }
+      // Stub path (tests + gallery): scripted gate/report.
       if (tool.risk >= 1) {
         setPendingGate(previewForTool(tool, value));
         return;
@@ -186,7 +197,7 @@ export function App() {
         },
       ]);
     },
-    [pendingGate, live]
+    [pendingGate, acting, live, engine, host]
   );
 
   const reverse = useCallback(

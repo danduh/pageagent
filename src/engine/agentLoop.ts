@@ -175,6 +175,8 @@ function declineText(reason: string, detail?: string): string {
       return "That control is disabled right now, so I didn't do anything.";
     case 'unknown-handle':
       return 'My tool list is out of date — re-scan the page and try again.';
+    case 'disconnected':
+      return "I lost my connection to this page — it was probably reloaded (or the extension was). Reload the page, Scan again, then retry.";
     default:
       return "I couldn't act on that, so I did nothing.";
   }
@@ -217,10 +219,11 @@ export type GateOutcome =
   | { decision: 'cancelled' }
   | { decision: 'declined'; reason: string; detail?: string };
 
-export interface LoopDeps {
-  tools: Tool[];
-  /** Prompt the model (system prompt already applied at session creation). */
-  brain: { prompt(text: string): Promise<string> };
+/**
+ * What running ONE already-chosen tool needs — shared by the loop (Chat) and a direct
+ * Execute-tab run, so both go through the IDENTICAL tier → gate → execute → report path.
+ */
+export interface ToolRunDeps {
   classifyTier(tool: Tool): RiskTier;
   /** Locate-or-decline + Confirm-gate for a Tier-1/2 action. */
   gate(tool: Tool, args: Record<string, unknown>): Promise<GateOutcome>;
@@ -234,8 +237,51 @@ export interface LoopDeps {
   signal: AbortSignal;
 }
 
+export interface LoopDeps extends ToolRunDeps {
+  tools: Tool[];
+  /** Prompt the model (system prompt already applied at session creation). */
+  brain: { prompt(text: string): Promise<string> };
+}
+
 let turnSeq = 0;
 const turnId = (): string => `loop-${(turnSeq += 1)}`;
+
+/**
+ * Run ONE already-selected tool: tier it, gate a Tier-1/2 action (locate-or-decline
+ * first), execute, and report on the certainty ladder — registering a Tier-0 toggle's
+ * one-tap reverse. Used for both a Chat loop pick and a direct Execute-tab Run.
+ */
+export async function* runSelectedTool(
+  tool: Tool,
+  args: Record<string, unknown>,
+  deps: ToolRunDeps
+): AsyncIterable<Turn> {
+  const { classifyTier, gate, execute, signal } = deps;
+  if (signal.aborted) return;
+
+  const tier = classifyTier(tool);
+  if (tier >= 1) {
+    const g = await gate(tool, args);
+    if (signal.aborted) return;
+    if (g.decision === 'declined') {
+      yield { id: turnId(), kind: 'report', certainty: 'couldnt', text: declineText(g.reason, g.detail) };
+      return;
+    }
+    if (g.decision === 'cancelled') {
+      yield { id: turnId(), kind: 'report', certainty: 'didnt', text: 'You stopped it — I didn’t do anything.' };
+      return;
+    }
+  }
+
+  const outcome = await execute(tool, args);
+  if (signal.aborted) return;
+  const id = turnId();
+  const report = outcomeToReport(id, tool, tier, outcome);
+  // Register the undo keyed to THIS turn, so its reverse re-runs its own Tier-0 toggle —
+  // never a newer (possibly Tier-1/2) action (review finding: ungated stale reverse).
+  if (report.reverse) deps.registerReverse?.(id, tool, typeof args.value === 'string' ? args.value : undefined);
+  yield report;
+}
 
 /**
  * The capped single-action loop. Yields transcript Turns as it works and stops after
@@ -243,7 +289,7 @@ const turnId = (): string => `loop-${(turnSeq += 1)}`;
  * guesses among tools, and honours `signal` (Stop) at every await boundary.
  */
 export async function* runAgentLoop(userText: string, deps: LoopDeps): AsyncIterable<Turn> {
-  const { tools, brain, classifyTier, gate, execute, signal } = deps;
+  const { tools, brain, signal } = deps;
 
   for (let step = 0; step < MAX_TOOL_CALLS; step += 1) {
     if (signal.aborted) return;
@@ -283,28 +329,8 @@ export async function* runAgentLoop(userText: string, deps: LoopDeps): AsyncIter
       return;
     }
 
-    const tier = classifyTier(tool);
-    if (tier >= 1) {
-      const g = await gate(tool, parsed.args);
-      if (signal.aborted) return;
-      if (g.decision === 'declined') {
-        yield { id: turnId(), kind: 'report', certainty: 'couldnt', text: declineText(g.reason, g.detail) };
-        return;
-      }
-      if (g.decision === 'cancelled') {
-        yield { id: turnId(), kind: 'report', certainty: 'didnt', text: 'You stopped it — I didn’t do anything.' };
-        return;
-      }
-    }
-
-    const outcome = await execute(tool, parsed.args);
-    if (signal.aborted) return;
-    const id = turnId();
-    const report = outcomeToReport(id, tool, tier, outcome);
-    // Register the undo keyed to THIS turn, so its reverse re-runs its own Tier-0 toggle —
-    // never a newer (possibly Tier-1/2) action (review finding: ungated stale reverse).
-    if (report.reverse) deps.registerReverse?.(id, tool, parsed.value);
-    yield report;
+    // Same tier → gate → execute → report path the Execute-tab uses.
+    yield* runSelectedTool(tool, parsed.args, deps);
     return; // single confirmed action — the reliable core (multi-step is Phase 10)
   }
 }

@@ -69,6 +69,16 @@ function cloneable(value: unknown): unknown {
   }
 }
 
+/** The native executeTool returns results as a JSON STRING — parse it back to a value. */
+function parseMaybeJson(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 async function announce(): Promise<void> {
   const declaredTools = await readTools();
   post({
@@ -90,8 +100,17 @@ async function invoke(invokeId: string, name: string, args: Record<string, unkno
   const tool = liveTools.find((t) => t.name === name);
   if (!tool) return fail('declared tool not found');
   try {
-    const result = await mc.executeTool(tool, args);
-    post({ channel: PA_WIRE, dir: 'to-isolated', type: 'invoke-result', invokeId, ok: true, result: cloneable(result) });
+    // The native executeTool takes args as a JSON STRING (an object throws "Failed to parse
+    // input arguments") and returns its result as a JSON string too.
+    const raw = await mc.executeTool(tool, JSON.stringify(args ?? {}));
+    post({
+      channel: PA_WIRE,
+      dir: 'to-isolated',
+      type: 'invoke-result',
+      invokeId,
+      ok: true,
+      result: cloneable(parseMaybeJson(raw)),
+    });
   } catch (e) {
     fail((e as Error).message);
   }
