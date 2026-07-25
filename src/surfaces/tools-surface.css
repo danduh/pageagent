@@ -153,8 +153,18 @@
 .pat-row__badges {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: var(--pa-space-1);
   margin-top: var(--pa-space-1);
+}
+
+/* WebMCP source glyph — sits just before the "From this site" badge on declared tools.
+ * Decorative (aria-hidden): the badge word carries the meaning. */
+.pat-mcp {
+  display: inline-flex;
+  align-items: center;
+  color: var(--brand-ink);
+  flex-shrink: 0;
 }
 
 /* Trailing action column: a visible Run and a one-tap Details disclosure. Stacked so it

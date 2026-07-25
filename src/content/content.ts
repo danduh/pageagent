@@ -1,8 +1,8 @@
-// Isolated-world content script — the panel↔page bridge (Step 7.2) and the DOM
-// scanner's host. It has full DOM access but no page-JS access (the anti-spoof /
-// prompt-injection boundary). It answers the panel's typed requests over
-// chrome.runtime.onMessage and caches WebMCP presence handed to it by the MAIN-world
-// island. Tool GENERATION stays in the panel/engine — this side only observes the DOM.
+// Isolated-world content script — the panel↔page bridge (Step 7.2) and the DOM scanner's
+// host. Full DOM access, no page-JS access (the anti-spoof / prompt-injection boundary). It
+// answers the panel's typed requests over chrome.runtime.onMessage, caches WebMCP presence +
+// the site's declared tools handed to it by the MAIN-world island, and relays declared-tool
+// invocations to the MAIN world (Step 8.1). Tool GENERATION + fusion stay in the panel/engine.
 
 import { scanDom } from './scanner';
 import { executeAction } from './execute';
@@ -10,36 +10,74 @@ import {
   isPanelToContent,
   isWireMessage,
   PA_WIRE,
+  type ExecuteDeclaredResponse,
   type ExecuteResponse,
   type PageInfoResponse,
   type ScanResponse,
 } from './messages';
 import type { ActionType } from '../engine/types';
-import type { ElementFingerprint } from '../engine/scan-types';
+import type { DeclaredToolDef, ElementFingerprint } from '../engine/scan-types';
 
-// WebMCP presence, cached from the MAIN-world island's postMessage.
+// WebMCP presence + declared tools, cached from the MAIN-world island's postMessage.
 let modelContextPresent = false;
-let declaredToolNames: string[] = [];
+let declaredTools: DeclaredToolDef[] = [];
+
+// Pending declared-tool invocations (isolated → MAIN → back), keyed by invokeId.
+const pendingInvokes = new Map<string, (r: ExecuteDeclaredResponse) => void>();
+
+/** Unguessable invoke id (defence-in-depth alongside the ev.source guard). */
+function newInvokeId(): string {
+  const c = globalThis.crypto as Crypto | undefined;
+  if (c?.randomUUID) return `inv-${c.randomUUID()}`;
+  if (c?.getRandomValues) {
+    const a = new Uint32Array(2);
+    c.getRandomValues(a);
+    return `inv-${a[0].toString(36)}${a[1].toString(36)}`;
+  }
+  return `inv-${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+}
 
 window.addEventListener('message', (ev: MessageEvent) => {
+  // SECURITY: only accept messages this same window posted (our MAIN-world island). A
+  // co-resident cross-origin subframe (ad/widget) can call window.top.postMessage and would
+  // otherwise be able to forge a declared-tool result or poison the tool list.
+  if (ev.source !== window) return;
   const d: unknown = ev.data;
-  if (!isWireMessage(d)) return;
-  if (d.dir === 'to-isolated' && d.type === 'model-context') {
+  if (!isWireMessage(d) || d.dir !== 'to-isolated') return;
+  if (d.type === 'model-context') {
     modelContextPresent = d.present;
-    declaredToolNames = d.toolNames;
+    declaredTools = d.declaredTools;
+  } else if (d.type === 'invoke-result') {
+    const cb = pendingInvokes.get(d.invokeId);
+    if (cb) {
+      pendingInvokes.delete(d.invokeId);
+      cb(d.ok ? { ok: true, result: d.result } : { ok: false, reason: d.error ?? 'invoke failed' });
+    }
   }
 });
 
 // Ask the MAIN world proactively, in case its load-time post preceded our listener.
 window.postMessage({ channel: PA_WIRE, dir: 'to-main', type: 'model-context?' }, '*');
 
-// Request ids the panel has asked us to abort. scanDom() polls this at its yield
-// points; for the current synchronous scan it only takes effect if the abort arrived
-// before the scan started (a chunked async scan would honour mid-scan aborts).
+/** Invoke a site-declared tool via the MAIN world, resolving on its reply (or a timeout). */
+function invokeDeclared(name: string, args: Record<string, unknown>): Promise<ExecuteDeclaredResponse> {
+  return new Promise((resolve) => {
+    const invokeId = newInvokeId();
+    const timer = setTimeout(() => {
+      if (pendingInvokes.delete(invokeId)) resolve({ ok: false, reason: 'the site tool did not respond' });
+    }, 15000);
+    pendingInvokes.set(invokeId, (r) => {
+      clearTimeout(timer);
+      resolve(r);
+    });
+    window.postMessage({ channel: PA_WIRE, dir: 'to-main', type: 'invoke', invokeId, name, args }, '*');
+  });
+}
+
+// Request ids the panel has asked us to abort (see Phase 7 notes on synchronous scan).
 const abortedRequests = new Set<string>();
 
-// Last scan's handle → fingerprint map, so EXECUTE can re-resolve the intended control
-// against the LIVE DOM at act-time (not the scan-time node). Cleared on every re-scan.
+// Last scan's handle → fingerprint map, so EXECUTE can re-resolve against the LIVE DOM.
 const scanCache = new Map<string, { fingerprint: ElementFingerprint; actionType: ActionType }>();
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
@@ -58,7 +96,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         origin: location.origin,
         title: document.title,
         hasModelContext: modelContextPresent,
-        declaredToolNames,
+        declaredTools,
       };
       sendResponse(resp);
       return;
@@ -102,6 +140,11 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         sendResponse(resp);
       }
       return;
+    }
+    case 'execute-declared': {
+      // Async: relay to the MAIN world and respond when it replies (keep the channel open).
+      void invokeDeclared(message.name, message.args).then((r) => sendResponse(r));
+      return true;
     }
     default: {
       // Exhaustiveness — a new PanelToContent type must be handled above.

@@ -92,7 +92,10 @@ function extractToolName(obj: Record<string, unknown>): string {
 
 export interface ParsedIntent {
   toolName: string;
+  /** The single value for a DOM type/choose tool (args.value). */
   value?: string;
+  /** The full args object — declared (WebMCP) tools are multi-arg. */
+  args: Record<string, unknown>;
   reply?: string;
 }
 
@@ -103,7 +106,7 @@ export function parseIntent(raw: string): ParsedIntent | null {
   const args = coerceArgs(obj.args);
   const value = typeof args.value === 'string' ? args.value : undefined;
   const reply = typeof obj.reply === 'string' ? obj.reply : undefined;
-  return { toolName, value, reply };
+  return { toolName, value, args, reply };
 }
 
 /**
@@ -117,9 +120,11 @@ export function buildSystemPrompt(tools: Tool[]): string {
       ? '(no tools found on this page — emit { "toolName": "done", "reply": "..." })'
       : tools
           .map((t) => {
-            const needsValue = t.actionType === 'type' || t.actionType === 'choose';
             const desc = t.description ? ` — ${t.description}` : '';
-            return `- ${t.id}: ${t.name}${desc}${needsValue ? ' (needs args.value)' : ''}`;
+            let argHint = '';
+            if (t.source === 'declared' && t.valueLabel) argHint = ` (site tool; fill args: ${t.valueLabel})`;
+            else if (t.actionType === 'type' || t.actionType === 'choose') argHint = ' (needs args.value)';
+            return `- ${t.id}: ${t.name}${desc}${argHint}`;
           })
           .join('\n');
   const validIds = tools.map((t) => t.id).join(', ') || '(none)';
@@ -179,7 +184,11 @@ function declineText(reason: string, detail?: string): string {
 export function outcomeToReport(id: string, tool: Tool, tier: RiskTier, outcome: ExecOutcome): Turn {
   if (outcome.kind === 'executed') {
     if (outcome.observed.verified) {
-      const reverseLabel = tier === 0 ? toggleReverseLabel(outcome.observed) : null;
+      // A reverse is offered ONLY for a MANUFACTURED Tier-0 toggle: re-running it is a genuine
+      // DOM inverse. A declared (site) tool has no DOM handle to re-run, and its "now off"
+      // summary is site-controlled text — offering an undo it can't perform would be a lie.
+      const reverseLabel =
+        tier === 0 && tool.source === 'manufactured' ? toggleReverseLabel(outcome.observed) : null;
       return {
         id,
         kind: 'report',
@@ -214,9 +223,9 @@ export interface LoopDeps {
   brain: { prompt(text: string): Promise<string> };
   classifyTier(tool: Tool): RiskTier;
   /** Locate-or-decline + Confirm-gate for a Tier-1/2 action. */
-  gate(tool: Tool, value: string | undefined): Promise<GateOutcome>;
-  /** Execute a resolved action; returns the observed outcome. */
-  execute(tool: Tool, value: string | undefined): Promise<ExecOutcome>;
+  gate(tool: Tool, args: Record<string, unknown>): Promise<GateOutcome>;
+  /** Execute a resolved action (DOM or site-declared); returns the observed outcome. */
+  execute(tool: Tool, args: Record<string, unknown>): Promise<ExecOutcome>;
   /**
    * Register a one-tap reverse for THIS report turn (only called for reversible Tier-0
    * toggles). Keyed by turn id so each undo re-runs its OWN action — never a newer one.
@@ -276,7 +285,7 @@ export async function* runAgentLoop(userText: string, deps: LoopDeps): AsyncIter
 
     const tier = classifyTier(tool);
     if (tier >= 1) {
-      const g = await gate(tool, parsed.value);
+      const g = await gate(tool, parsed.args);
       if (signal.aborted) return;
       if (g.decision === 'declined') {
         yield { id: turnId(), kind: 'report', certainty: 'couldnt', text: declineText(g.reason, g.detail) };
@@ -288,7 +297,7 @@ export async function* runAgentLoop(userText: string, deps: LoopDeps): AsyncIter
       }
     }
 
-    const outcome = await execute(tool, parsed.value);
+    const outcome = await execute(tool, parsed.args);
     if (signal.aborted) return;
     const id = turnId();
     const report = outcomeToReport(id, tool, tier, outcome);

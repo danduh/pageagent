@@ -8,8 +8,9 @@
 import { detectLanguageModel, type CapabilityState } from '../lib/capabilities';
 import type { EnginePort, RunHost, Turn } from './port';
 import type { GatePreview, PageInfo, ScanResult, Tool } from './types';
-import type { ExecOutcome } from './scan-types';
+import type { DeclaredToolDef, ExecOutcome } from './scan-types';
 import { generateTools } from './toolgen';
+import { interpretDeclaredResult, mergeTools } from './fusion';
 import {
   buildSystemPrompt,
   INTENT_SCHEMA,
@@ -20,6 +21,7 @@ import {
 } from './agentLoop';
 import {
   PA_MSG,
+  type ExecuteDeclaredResponse,
   type ExecuteResponse,
   type PageInfoResponse,
   type PanelToContent,
@@ -66,7 +68,9 @@ function describeScanError(e: unknown): string {
 export function createLiveEngine(): LiveEngine {
   let cachedPage: PageInfo = { origin: '', title: 'Reading this page…' };
   let cachedTools: Tool[] = [];
-  // tool.id → scan handle id, so the loop can dispatch a Tool to its live element.
+  // The page's own declared WebMCP tools (Step 8.1), refreshed from page-info.
+  let cachedDeclared: DeclaredToolDef[] = [];
+  // tool.id → scan handle id, so the loop can dispatch a MANUFACTURED Tool to its live element.
   const idToHandle = new Map<string, string>();
   let requestSeq = 0;
   const nextRequestId = (): string => `req-${(requestSeq += 1)}`;
@@ -93,12 +97,34 @@ export function createLiveEngine(): LiveEngine {
   async function loadPageInfo(): Promise<void> {
     try {
       const r = await send<PageInfoResponse>({ tag: PA_MSG, type: 'page-info', requestId: nextRequestId() });
-      if (r?.ok) cachedPage = { origin: r.origin, title: r.title };
+      if (r?.ok) {
+        cachedPage = { origin: r.origin, title: r.title };
+        cachedDeclared = r.declaredTools ?? [];
+      }
     } catch {
       /* restricted/blank page — keep the placeholder identity */
     }
   }
   void loadPageInfo();
+
+  /** Invoke a site-declared WebMCP tool via the MAIN world (document.modelContext). */
+  async function invokeDeclaredTool(name: string, args: Record<string, unknown>): Promise<ExecOutcome> {
+    try {
+      const resp = await send<ExecuteDeclaredResponse>({
+        tag: PA_MSG,
+        type: 'execute-declared',
+        requestId: nextRequestId(),
+        name,
+        args,
+      });
+      if (!resp.ok) return { kind: 'declined', reason: 'stale', detail: resp.reason };
+      // A site tool runs its OWN handler; we can't diff the DOM for it. interpretDeclaredResult
+      // reads the return honestly — a failure signal is NEVER reported as Done (review finding).
+      return { kind: 'executed', observed: interpretDeclaredResult(resp.result) };
+    } catch (e) {
+      return { kind: 'declined', reason: 'stale', detail: (e as Error).message };
+    }
+  }
 
   async function bridgeExecute(tool: Tool, value: string | undefined, dryRun: boolean): Promise<ExecOutcome> {
     const handleId = idToHandle.get(tool.id);
@@ -172,13 +198,16 @@ export function createLiveEngine(): LiveEngine {
         if (!resp.ok) return { status: 'failed', reason: resp.reason };
         if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
         const raw = resp.result;
-        cachedTools = generateTools(raw.elements);
-        // Zip tools ↔ elements (generateTools preserves order) so we can dispatch by tool id.
+        const manufactured = generateTools(raw.elements);
+        // Zip manufactured tools ↔ elements (generateTools preserves order) so we can dispatch
+        // by tool id. Build this from the MANUFACTURED list BEFORE fusion reorders it.
         idToHandle.clear();
         raw.elements.forEach((el, i) => {
-          const tool = cachedTools[i];
+          const tool = manufactured[i];
           if (tool) idToHandle.set(tool.id, el.handleId);
         });
+        // Fuse with the site's declared WebMCP tools (Step 8.1): declared win on overlap.
+        cachedTools = mergeTools(manufactured, cachedDeclared);
         // The tool-set changed → the model's system prompt is stale.
         session?.destroy?.();
         session = null;
@@ -227,7 +256,16 @@ export function createLiveEngine(): LiveEngine {
           prompt: (t: string) => brainSession.prompt(t, { responseConstraint: INTENT_SCHEMA }),
         },
         classifyTier: (tool) => tool.risk,
-        gate: async (tool, value): Promise<GateOutcome> => {
+        gate: async (tool, args): Promise<GateOutcome> => {
+          const value = typeof args.value === 'string' ? args.value : undefined;
+          if (tool.source === 'declared') {
+            // A site-declared tool is "located" via the WebMCP API — no DOM dry-run. Preview
+            // from its own metadata; the value line shows the args the model chose.
+            if (signal.aborted) return { decision: 'cancelled' };
+            const shown = value ?? JSON.stringify(args);
+            const ok = await host.confirm(buildPreview(tool, shown, tool.name, text));
+            return { decision: ok ? 'approved' : 'cancelled' };
+          }
           // Locate-or-decline BEFORE the gate (Step 8.5): a dry-run re-resolve + verify.
           const dry = await bridgeExecute(tool, value, true);
           // Stop may have landed during the dry-run round-trip — don't open a gate after
@@ -238,7 +276,11 @@ export function createLiveEngine(): LiveEngine {
           const ok = await host.confirm(buildPreview(tool, value, label, text));
           return { decision: ok ? 'approved' : 'cancelled' };
         },
-        execute: (tool, value): Promise<ExecOutcome> => bridgeExecute(tool, value, false),
+        execute: (tool, args): Promise<ExecOutcome> => {
+          if (tool.source === 'declared') return invokeDeclaredTool(tool.id, args);
+          const value = typeof args.value === 'string' ? args.value : undefined;
+          return bridgeExecute(tool, value, false);
+        },
         registerReverse: (id, tool, value) => reverseActions.set(id, { tool, value }),
         signal,
       };
