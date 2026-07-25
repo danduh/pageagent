@@ -37,8 +37,10 @@ and no surface changes:
 Build the real engine, thinnest vertical slice first (one real page → real tools → run one non-destructive
 click). Plan steps (in order):
 - **7.0** Permission + MV3 service-worker-lifecycle reconciliation (where the loop/state lives; abort survives
-  SW restart). Also decide the **Prompt-API host document** (provisional: the side panel — CONFIRM via the
-  Spike-A follow-up, see below).
+  SW restart). **Prompt-API host document = the side panel — CONFIRMED (Spike A2, 2026-07-25; see below +
+  `spikes/FINDINGS.md`):** `create()` succeeds in the real side-panel document at the extension origin (Chrome
+  152, `available`). No offscreen document — panel hosts the loop + `LanguageModel` session; content script
+  scans/executes over the bus; abort channel is panel-local.
 - **7.1** Real capability detection (already have `src/lib/capabilities.ts` detect/provision split).
 - **7.2** Content-script + **MAIN-world** bridge (`src/content/content.ts`, `src/content/main-world.ts` are
   stubs today) + a typed panel↔page message bus + tab-binding + an **abort/Stop channel**.
@@ -66,9 +68,15 @@ Verified on Chrome 152 Canary (page context):
   WeakRef = liveness-negative only; **DOM index never acts**; stable id confirmatory; **decline on ambiguity**.
   Four-outcome union: `resolved-verified | not-found | ambiguous | stale`.
 - `document.modelContext` **present** on 152 (WebMCP surface exists) — but keep the internal registry primary.
-- **OPEN / do first:** does `create()` succeed in the REAL MV3 **side-panel document** (extension origin +
-  origin-trial token)? Needs the user's Chrome + **Claude-in-Chrome connected** (issue #10; #5/#6). Provisional
-  lean: the side panel is the host. If it fails there → move the loop to an offscreen document (changes 7.2).
+- **RESOLVED (Spike A2, 2026-07-25):** `create()` **succeeds in the REAL MV3 side-panel document** at the
+  extension origin (`chrome-extension://…`, Chrome 152, `availability: "available"`, ~1 ms create, ~1 s
+  steady-state routing, **~6 s one-time cold warmup** → create the session eagerly on panel open). **Native
+  tool-calling re-confirmed unusable at the extension origin** (0/3 dispatch across 5-tool, 5-tool-forceful,
+  36-tool — prose / raw `<|channel>thought` traces) → **manual `INTENT_SCHEMA` loop stays**; **INTENT_SCHEMA
+  routing was 4/4 correct incl. the 36-tool set.** Residual: no-gesture create() at the extension origin not
+  independently isolated (Claude-in-Chrome can't navigate `chrome-extension://` URLs) — strongly implied
+  (available-state gate doesn't apply); fresh-machine download UX still unobserved. Probe:
+  `spikes/spike-a2-followup/` (throwaway — safe to delete once this is internalized).
 
 ## Reuse (sibling repos referenced by the plan)
 - `/Users/danielos/dev/window-ai/chat`: `mcpAgentLoop.ts` (→ `INTENT_SCHEMA`, `extractJsonFromResponse`,
@@ -120,8 +128,8 @@ resize 380px, navigate `/src/sidepanel/index.html`, drive via `preview_eval`). N
 HTML-escaped — `html.unescape()` before writing. Ultracode is on: lean into workflows for substantive phases.
 
 ## Suggested first action in the fresh session
-Confirm the **Spike-A follow-up** first if the user reconnects Claude-in-Chrome to their Chrome (settles where
-the loop runs), THEN start **Phase 7** with a thin slice: content-script MAIN-world bridge (7.2) → real DOM
-scan of a simple page (7.3) → tool-gen (7.4) → show REAL tools in the existing Tools surface. That alone makes
-it stop being a puppet. Then 8.4/8.5 (execute + gate on a real element) → 9.2 (the on-device loop) for the
-first real confirmed action.
+**The Spike-A follow-up is DONE (2026-07-25) — host document = side panel, manual loop confirmed (above).**
+Start **Phase 7** with a thin slice: content-script MAIN-world bridge (7.2) → real DOM scan of a simple page
+(7.3) → tool-gen (7.4) → show REAL tools in the existing Tools surface. That alone makes it stop being a
+puppet. Then 8.4/8.5 (execute + gate on a real element) → 9.2 (the on-device loop — reuse `mcpAgentLoop.ts`
+nearly verbatim, session created eagerly in the side panel) for the first real confirmed action.

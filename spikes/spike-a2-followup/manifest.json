@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "PageAgent Spike A2 — side-panel create() + tool-calling bake-off",
+  "version": "0.0.1",
+  "description": "Throwaway follow-up probe (#5/#10): confirm LanguageModel.create() in the real MV3 side-panel document at the extension origin, and run the native-tool-calling vs INTENT_SCHEMA bake-off + an independent structured-output test.",
+  "minimum_chrome_version": "128",
+  "background": { "service_worker": "background.js" },
+  "side_panel": { "default_path": "panel.html" },
+  "action": { "default_title": "Spike A2 — open panel" },
+  "permissions": ["sidePanel"],
+  "// note": "aiLanguageModelOriginTrial + trial_tokens are omitted: on Canary/Dev the Prompt API works flag-based (spikes/FINDINGS.md — availability was 'available' on Chrome 152). This probe answers API viability AT THE EXTENSION ORIGIN; token coverage is a stable-channel concern tracked separately."
+}

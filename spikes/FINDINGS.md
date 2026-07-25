@@ -95,3 +95,42 @@ Driven live via Claude-in-Chrome on the user's **Chrome 152.0.0.0 Canary**, on a
 - **Ambiguous name, no id (the residual gap):** 2 name matches → `byName: AMBIGUOUS` → decision **DECLINE**. ✅ The **decline-on-ambiguity path is validated against real data** — the core of the locate-or-decline guarantee holds.
 
 **Verdict (Spike B):** the multi-signal fingerprint + four-outcome gate + **decline-on-ambiguity** are confirmed on real Chrome 152. **Residual:** hard-DOM cases (shadow/virtualized/canvas/cross-route) and real-framework id stability + re-query cost (tracked on #6/#10).
+
+---
+
+## Spike A2 — follow-up in the REAL MV3 side-panel document (#5/#10) — 2026-07-25
+
+Ran the enhanced follow-up probe (`spikes/spike-a2-followup/`) **inside the actual MV3 side-panel document** of a throwaway extension, on the user's **Chrome 152.0.0.0** (stable profile, Nano resident). This is the context every prior run lacked: a genuine `chrome-extension://` origin + a real `side_panel` document. **It meets Step 0.5's core acceptance, which the 148-embedded and 152-plain-page runs did not.** Raw JSON archived in the session; the load-bearing numbers are below.
+
+- **Context:** `chrome-extension://iakcikgnfcjbbmmgmbgaflenlcbgkdgp/panel.html`, `isExtensionOrigin: true`, Chrome **152.0.0.0**, `typeof self.LanguageModel === "function"`, `availability() === "available"` (Nano resident — no download on this machine).
+
+### 1. `create()` in the side-panel document — **SUCCEEDS ✓ (the headline)**
+- `LanguageModel.create({})` **succeeded in the real side-panel document**, `~1 ms`. `session.prompt("…PONG")` returned `"PONG"` in **~5.9 s on the FIRST call** (cold session warmup); every subsequent structured/routing prompt was **~1.0–1.1 s**.
+- **⇒ The "Prompt-API host document" open decision is RESOLVED: the side panel IS a valid host.** The agent brain (capped intent-loop) lives in the **side panel** — **no offscreen document required**, which keeps the Step 7.2 bridge topology simple (panel hosts the loop; content script only scans/executes) and the Stop/abort channel local to the panel.
+- **Latency consequence (Phase 9 UX):** the ~6 s cold-start is a one-time session warmup. Create the session **early/eagerly** (on panel open, once `available`) and show an honest "thinking on your device" state — never a network-flavored spinner. Steady-state single-turn routing is ~1 s.
+
+### 2. Native tool-calling vs. `INTENT_SCHEMA` bake-off — **native still UNUSABLE ✗; manual loop STAYS**
+Three native-tool-calling turns via `create({ tools: [...with execute()...] })`; in **all three the model NEVER dispatched** a tool (`execute()` never fired), it replied in prose or emitted a raw reasoning trace:
+- 5-tool set: `dispatched: false` — replied *"Please provide more context so I can help you rerun the failed jobs…"* (~3.6 s).
+- 5-tool set + forceful "you MUST call a tool, never reply in prose" system prompt: `dispatched: false` — emitted a raw **`<|channel>thought` reasoning trace** as prose (~9.4 s), still no dispatch.
+- 36-tool set: `dispatched: false` — *"Please tell me what you are referring to…"* (~1.5 s).
+
+The **`INTENT_SCHEMA`** arm, same prompts, same session mechanism as Phase 9 will use: **4/4 routing turns correct, 0 malformed** —
+- structured-output test `"rerun the failed jobs"` → `click_rerun_failed_jobs` ✓ (~1.0 s)
+- small bake-off `"rerun the failed jobs"` → `click_rerun_failed_jobs` ✓ (~1.0 s)
+- dense bake-off `"turn off marketing emails"` (**target embedded among 36 tools**) → `toggle_marketing_emails` ✓ (~1.1 s)
+
+**⇒ Decision rule (flip only if native is *materially more reliable*): NOT met — native is the opposite (0 % dispatch vs 100 % correct routing). The manual capped `INTENT_SCHEMA` loop is confirmed on the extension origin, re-confirming docs/07 §2. This is now the 2nd context on 152 (plain https + extension side panel) plus the 148 signal — no context has ever shown usable native tool-calling.** Change scoped, if ever, to the model-output→intent parse seam only.
+
+### 3. Structured output (`responseConstraint` + `INTENT_SCHEMA`) — works; parse/coerce still required
+- `session.prompt(text, { responseConstraint: INTENT_SCHEMA })` is the working call (the modern prompt-time constraint, not `create({responseFormat})`). Valid JSON, correct routing, **fast (~1 s)**, reliable at 36 tools.
+- **Schema-faithfulness is INCONSISTENT run-to-run:** this run emitted a proper `"toolName": "<string>"` (`schemaFaithful: true`), but the 152 Canary run emitted a non-faithful `{"tool":{"type":…}}`. Because faithfulness cannot be relied on, **`extractJsonFromResponse` + `coerceArgs` stay mandatory** (validated, not optional).
+
+### Verdict (Spike A2) — the two blockers on the engine architecture are cleared
+1. **Prompt-API host = the side panel (confirmed).** Phase 7.0/7.2 proceed on: loop + `LanguageModel` session in the side panel; content script does scan/execute over the message bus; abort channel is panel-local.
+2. **Manual capped `INTENT_SCHEMA` loop (confirmed).** Phase 9.2 reuses `mcpAgentLoop.ts` (`INTENT_SCHEMA`, `extractJsonFromResponse`, `coerceArgs`, `buildSystemPrompt`, `MAX_TOOL_CALLS`) nearly verbatim. Single-action routing is reliable even on a dense set → embeddings top-k (Phase 11) is a large-page optimization, not a correctness prerequisite.
+
+**Residuals (small, non-blocking):**
+- **No-gesture create() at the extension origin not independently isolated.** The side-panel run was a button click (`userActivationActive: true`). Attempted to isolate it via Claude-in-Chrome driving `chrome-extension://…/panel.html` as a tab, but `navigate` force-prefixes `https://` and cannot load a `chrome-extension://` URL. Strongly implied regardless: the 152-Canary plain-page run showed no-gesture `create()` when `available`, and Chrome's own error text ("Requires a user gesture when availability is downloading or downloadable") means the gate does **not** apply in the `available` state. The detect/provision split (`src/lib/capabilities.ts`) already handles the fresh-machine `downloadable` case (first `create()` gesture-gated to trigger download).
+- **Fresh-machine download UX still unobserved** — this machine had Nano resident. Record size/time when first seen on a machine in the `downloadable` state.
+- **`create({tools})` is *accepted* but inert** — passing `tools` doesn't error, it just never dispatches; don't mistake acceptance for support.
