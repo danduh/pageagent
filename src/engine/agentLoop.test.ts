@@ -48,6 +48,7 @@ describe('parse helpers', () => {
     expect(parseIntent('{"toolName":"type_search","args":{"value":"failed"}}')).toEqual({
       toolName: 'type_search',
       value: 'failed',
+      args: { value: 'failed' },
       reply: undefined,
     });
     expect(parseIntent('garbage')).toBeNull();
@@ -80,6 +81,16 @@ describe('outcomeToReport — certainty ladder', () => {
     const r = outcomeToReport('t3', t, 1, declined);
     expect(r.certainty).toBe('couldnt');
     expect(r.reverse).toBeUndefined();
+  });
+
+  it('offers NO reverse for a DECLARED tool, even if its site-returned summary reads like a toggle', () => {
+    const declaredTool = tool({ id: 'toggleDark', name: 'Toggle dark', actionType: 'click', source: 'declared' });
+    const outcome: ExecOutcome = {
+      kind: 'executed',
+      observed: { summary: "the site ran its tool and returned: it's now off.", verified: true },
+    };
+    // Page-controlled "now off" text must not conjure a reverse the DOM executor can't run.
+    expect(outcomeToReport('td', declaredTool, 0, outcome).reverse).toBeUndefined();
   });
 
   it('offers NO reverse for a non-toggle action (re-running it would not undo it)', () => {

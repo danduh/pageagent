@@ -8,15 +8,20 @@
 
 import type { GatePreview, RiskTier, Tool } from '../engine/types';
 
+// Patterns tolerate INTERPOSED words (`[\s\S]*?`) so an evasive site-declared tool name
+// like `sendAllMoney` / `closeUserAccount` (which humanizes to "send all money" / "close
+// user account") still trips the hard-stop — the site controls the name, so the check must
+// not depend on exact verb-object adjacency. (This is the mock classifier; Step 8.3 replaces
+// it with origin + reversibility-confidence signals. Bias conservative until then.)
 const TIER2: RegExp[] = [
   /\bpay\b/,
-  /\bsend (money|payment)\b/,
-  /\btransfer\b/,
   /\$\s?\d/,
+  /\btransfer\b/,
+  /\b(send|transfer|wire|withdraw|move|deposit|pay)\b[\s\S]*?\b(money|payment|funds|balance|cash|crypto|bitcoin)\b/,
   /\bsign\s?out\b/,
   /\blog\s?out\b/,
-  /delete (my |the )?account/,
-  /close (my |the )?account/,
+  // Account destruction / high-stakes account changes, any verb, interposed words allowed.
+  /\b(close|delete|deactivate|terminate|deprovision|suspend|remove|reset|disable|cancel|wipe|erase|purge)\b[\s\S]*?\baccount\b/,
 ];
 
 const TIER1: RegExp[] = [
@@ -26,6 +31,11 @@ const TIER1: RegExp[] = [
   /\bdiscard\b/,
   /\bsubmit\b/,
   /\bunsubscribe\b/,
+  /\bdeactivate\b/,
+  /\brevoke\b/,
+  /\bterminate\b/,
+  /\bdestroy\b/,
+  /\b(wipe|erase|purge)\b/,
 ];
 
 /** Mock reversibility tier for a request. Tier 0 flows; Tier 1 gates; Tier 2 hard-stops. */

@@ -83,6 +83,20 @@ export interface ObservedChange {
  * and verified, or was not live/visible/enabled — we did NOTHING rather than act on the
  * wrong node (Spike B). `reason` in `declined` reuses the re-resolution + liveness words.
  */
+/**
+ * A WebMCP tool the page itself declared via `document.modelContext` (Step 8.1),
+ * serialized for the wire (the live RegisteredTool object stays in the MAIN world for
+ * invocation by identity). `origin` is the frame origin that declared it (provenance).
+ */
+export interface DeclaredToolDef {
+  name: string;
+  title?: string;
+  description?: string;
+  /** JSON Schema for the tool's arguments. */
+  inputSchema?: unknown;
+  origin?: string;
+}
+
 export type ExecOutcome =
   // Dry-run success: the element re-resolved + verified uniquely and is actionable.
   // `label` is its FRESH on-page name/text for a truthful gate preview (locate-or-decline).

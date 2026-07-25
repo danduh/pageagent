@@ -11,7 +11,7 @@
 // All messages carry a namespaced tag so we never confuse them with unrelated
 // page or extension messages sharing the same channels.
 
-import type { ExecOutcome, RawScanResult } from '../engine/scan-types';
+import type { DeclaredToolDef, ExecOutcome, RawScanResult } from '../engine/scan-types';
 
 export const PA_MSG = 'pageagent/v1';
 
@@ -43,7 +43,20 @@ export interface ExecuteRequest {
   /** When true the content script re-resolves + verifies but does NOT act (gate preview). */
   dryRun?: boolean;
 }
-export type PanelToContent = ScanRequest | PageInfoRequest | AbortRequest | ExecuteRequest;
+/** Invoke a site-declared WebMCP tool by name (Step 8.1), via document.modelContext. */
+export interface ExecuteDeclaredRequest {
+  tag: typeof PA_MSG;
+  type: 'execute-declared';
+  requestId: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+export type PanelToContent =
+  | ScanRequest
+  | PageInfoRequest
+  | AbortRequest
+  | ExecuteRequest
+  | ExecuteDeclaredRequest;
 
 // --- Content script → panel (sendResponse payloads) -------------------------
 export type ScanResponse =
@@ -57,13 +70,22 @@ export interface PageInfoResponse {
   title: string;
   /** Whether the page declares `document.modelContext` (WebMCP surface). */
   hasModelContext: boolean;
-  /** Names of site-declared tools, when present (Phase-8 fusion; [] otherwise). */
-  declaredToolNames: string[];
+  /** Site-declared WebMCP tools, when present (Phase-8 fusion; [] otherwise). */
+  declaredTools: DeclaredToolDef[];
 }
 
 export type ExecuteResponse = { ok: true; outcome: ExecOutcome } | { ok: false; reason: string };
 
-export type ContentResponse = ScanResponse | PageInfoResponse | ExecuteResponse;
+/** Result of invoking a site-declared tool (the page's handler return, or an error). */
+export type ExecuteDeclaredResponse =
+  | { ok: true; result: unknown }
+  | { ok: false; reason: string };
+
+export type ContentResponse =
+  | ScanResponse
+  | PageInfoResponse
+  | ExecuteResponse
+  | ExecuteDeclaredResponse;
 
 export function isPanelToContent(v: unknown): v is PanelToContent {
   return (
@@ -83,15 +105,38 @@ export interface WireModelContextQuery {
   dir: 'to-main';
   type: 'model-context?';
 }
-/** MAIN → isolated: modelContext presence + declared tool names. */
+/** MAIN → isolated: modelContext presence + the site's declared tools (Step 8.1). */
 export interface WireModelContextReply {
   channel: typeof PA_WIRE;
   dir: 'to-isolated';
   type: 'model-context';
   present: boolean;
-  toolNames: string[];
+  declaredTools: DeclaredToolDef[];
 }
-export type WireMessage = WireModelContextQuery | WireModelContextReply;
+/** Isolated → MAIN: invoke a declared tool by name (executeTool by object identity). */
+export interface WireInvokeQuery {
+  channel: typeof PA_WIRE;
+  dir: 'to-main';
+  type: 'invoke';
+  invokeId: string;
+  name: string;
+  args: Record<string, unknown>;
+}
+/** MAIN → isolated: the declared tool's result (or an error). */
+export interface WireInvokeReply {
+  channel: typeof PA_WIRE;
+  dir: 'to-isolated';
+  type: 'invoke-result';
+  invokeId: string;
+  ok: boolean;
+  result?: unknown;
+  error?: string;
+}
+export type WireMessage =
+  | WireModelContextQuery
+  | WireModelContextReply
+  | WireInvokeQuery
+  | WireInvokeReply;
 
 export function isWireMessage(v: unknown): v is WireMessage {
   return (
