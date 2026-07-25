@@ -37,6 +37,7 @@ import {
   ChooseIcon,
   ClickIcon,
   FollowLinkIcon,
+  McpIcon,
   SearchIcon,
   TypeIcon,
 } from '../components/icons';
@@ -196,6 +197,11 @@ function ToolRow({
           {sub ? <span className="pat-row__sub">{sub}</span> : null}
           <span className="pat-row__badges">
             <Badge tone="neutral">{ACTION_LABEL[tool.actionType]}</Badge>
+            {tool.source === 'declared' ? (
+              <span className="pat-mcp" aria-hidden="true">
+                <McpIcon size={15} />
+              </span>
+            ) : null}
             <Badge tone={SOURCE_BADGE_TONE[tool.source]}>{SOURCE_BADGE[tool.source]}</Badge>
             {destructive ? <Badge tone="caution">Asks first</Badge> : null}
           </span>
@@ -213,10 +219,20 @@ function ToolRow({
               <span className="pat-details__label">On the page</span>
               <code className="pat-details__mono">{tool.provenance}</code>
             </div>
-            <div className="pat-details__field">
-              <span className="pat-details__label">Matched element (mock)</span>
-              <code className="pat-details__mono">{mockSelector(tool)}</code>
-            </div>
+            {tool.source === 'declared' ? (
+              <div className="pat-details__field">
+                <span className="pat-details__label">How it runs</span>
+                <span className="pat-details__value">
+                  Invoked through the site’s own WebMCP handler (document.modelContext) — there is
+                  no page element to match.
+                </span>
+              </div>
+            ) : (
+              <div className="pat-details__field">
+                <span className="pat-details__label">Matched element (mock)</span>
+                <code className="pat-details__mono">{mockSelector(tool)}</code>
+              </div>
+            )}
 
             {destructive ? (
               <p className="pat-details__note">

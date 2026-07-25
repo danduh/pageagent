@@ -106,6 +106,23 @@ export function CheckpointIcon(props: IconProps) {
   );
 }
 
+/**
+ * WebMCP source: a central hub linked to satellite nodes — a site's published
+ * "model context" (tools the page declared for an agent via document.modelContext).
+ * Marks a tool that came from the site itself, not from our DOM scan.
+ */
+export function McpIcon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="12" cy="12" r="2.3" fill="currentColor" stroke="none" />
+      <circle cx="5.5" cy="6.5" r="1.7" />
+      <circle cx="18.5" cy="6.5" r="1.7" />
+      <circle cx="12" cy="19.6" r="1.7" />
+      <path d="M10.3 10.4 6.9 8M13.7 10.4 17.1 8M12 14.3v3.6" />
+    </Svg>
+  );
+}
+
 /* ---- action-type glyphs (1:1 with the four action kinds) ---------------------- */
 
 /** Click: the mouse pointer / cursor. */
