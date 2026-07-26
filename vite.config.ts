@@ -12,5 +12,10 @@ export default defineConfig({
     target: 'esnext',
     outDir: 'dist',
     emptyOutDir: true,
+    // No <link rel="modulepreload"> injection. The panel shares the `messages` chunk with the
+    // content/main-world scripts, so Chrome flags the panel's preload of it as an unused
+    // "cross-world extension resource mismatch". Extension chunks load from local disk, so the
+    // preload buys nothing — dropping it silences the warning with no perf cost.
+    modulePreload: false,
   },
 });
