@@ -272,7 +272,8 @@ export function createLiveEngine(): LiveEngine {
       if (!resp.ok) return { status: 'failed', reason: resp.reason };
       if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
       const raw = resp.result;
-      const manufactured = generateTools(raw.elements);
+      // Pass the page origin so the classifier can bias conservative on high-stakes origins (8.3).
+      const manufactured = generateTools(raw.elements, { origin: cachedPage.origin });
       // Zip manufactured tools ↔ elements (generateTools preserves order) so we can dispatch
       // by tool id. Build this from the MANUFACTURED list BEFORE fusion reorders it.
       idToHandle.clear();

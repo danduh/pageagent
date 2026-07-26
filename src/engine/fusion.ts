@@ -9,7 +9,7 @@
 
 import type { DeclaredToolDef, ObservedChange } from './scan-types';
 import type { Tool } from './types';
-import { classifyTier } from '../safety/classifier';
+import { classifyAction } from '../safety/classifier';
 
 function nonEmpty(s: string | undefined): string | undefined {
   return s && s.trim() ? s : undefined;
@@ -48,8 +48,12 @@ export function declaredToTool(d: DeclaredToolDef): Tool {
     // the engine routes by `source`, not by actionType.
     actionType: 'click',
     source: 'declared',
-    // Tier on the humanized name AND the raw id, so a camelCase destructive verb still gates.
-    risk: Math.max(classifyTier(humanize(name)), classifyTier(humanize(d.name))) as Tool['risk'],
+    // Tier on the humanized title AND the raw id, so a camelCase destructive verb still gates,
+    // carrying the declaring origin (Step 8.3: a high-stakes origin escalates an ambiguous tool).
+    risk: Math.max(
+      classifyAction({ label: humanize(name), actionType: 'click', origin: d.origin }).tier,
+      classifyAction({ label: humanize(d.name), actionType: 'click', origin: d.origin }).tier
+    ) as Tool['risk'],
     provenance: `declared by ${d.origin || 'this site'}`,
   };
   if (params.length > 0) tool.valueLabel = params.join(', ');

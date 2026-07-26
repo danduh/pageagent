@@ -10,7 +10,13 @@
 
 import type { ScannedElement } from './scan-types';
 import type { ActionType, Tool } from './types';
-import { classifyTier } from '../safety/classifier';
+import { classifyAction } from '../safety/classifier';
+
+/** Context the classifier uses beyond the element itself (Step 8.3). */
+export interface ToolGenContext {
+  /** The page/frame origin these elements belong to — drives the high-stakes tier bias. */
+  origin?: string;
+}
 
 const VERB: Record<ActionType, string> = {
   click: 'click',
@@ -56,7 +62,7 @@ function valueLabel(el: ScannedElement): string | undefined {
 }
 
 /** Pure: generate the browsable Tool set from scanned elements. Deterministic order. */
-export function generateTools(elements: ScannedElement[]): Tool[] {
+export function generateTools(elements: ScannedElement[], context: ToolGenContext = {}): Tool[] {
   const usedIds = new Set<string>();
 
   return elements.map((el) => {
@@ -68,12 +74,14 @@ export function generateTools(elements: ScannedElement[]): Tool[] {
 
     const label = el.unlabeled ? `this ${el.role}` : `"${el.name}"`;
 
-    // First-pass risk from the control's OWN words (el.name, not the synthesized
-    // display name — which embeds nearby text like "Delete" and would contaminate the
-    // signal). An unlabeled control can't be located reliably, so it gates (Tier 1) and
-    // the gate then declines (locate-or-decline). Step 8.3 refines with origin + a
-    // reversibility-confidence bar.
-    const risk: Tool['risk'] = el.unlabeled ? 1 : classifyTier(el.name);
+    // Risk from the control's OWN words (el.name, not the synthesized display name — which
+    // embeds nearby text like "Delete" and would contaminate the signal) + its Action-type +
+    // the page origin (Step 8.3: a high-stakes origin escalates an ambiguous control). An
+    // unlabeled control can't be located reliably, so it gates (Tier 1) and the gate then
+    // declines (locate-or-decline) — its risk is NOT read from the neighbour's word.
+    const risk: Tool['risk'] = el.unlabeled
+      ? 1
+      : classifyAction({ label: el.name, actionType: el.actionType, origin: context.origin }).tier;
 
     const tool: Tool = {
       id,
