@@ -11,7 +11,13 @@
 // All messages carry a namespaced tag so we never confuse them with unrelated
 // page or extension messages sharing the same channels.
 
-import type { DeclaredToolDef, ExecOutcome, RawScanResult } from '../engine/scan-types';
+import type { ActionType } from '../engine/types';
+import type {
+  DeclaredToolDef,
+  ElementFingerprint,
+  ExecOutcome,
+  RawScanResult,
+} from '../engine/scan-types';
 
 export const PA_MSG = 'pageagent/v1';
 
@@ -42,6 +48,13 @@ export interface ExecuteRequest {
   value?: string;
   /** When true the content script re-resolves + verifies but does NOT act (gate preview). */
   dryRun?: boolean;
+  /**
+   * An explicit fingerprint to re-resolve INSTEAD of the (positional, reused) handleId's
+   * cached one. The one-tap reverse pins the exact element the toggle acted on, so a between-
+   * step re-scan that remapped the handle can't make the undo flip a different control — it
+   * re-resolves the pinned fingerprint via the same locate-or-decline path (review finding).
+   */
+  pinned?: { fingerprint: ElementFingerprint; actionType: ActionType };
 }
 /** Invoke a site-declared WebMCP tool by name (Step 8.1), via document.modelContext. */
 export interface ExecuteDeclaredRequest {

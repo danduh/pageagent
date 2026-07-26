@@ -202,6 +202,11 @@ export function App() {
 
   const reverse = useCallback(
     (turnId: string) => {
+      // Never reverse while a run is in flight or a gate is open: a multi-step loop keeps
+      // `acting` true across steps, so an earlier step's one-tap reverse stays on screen —
+      // clicking it mid-run would orphan the loop's AbortController (breaking Stop) and race
+      // a second execute over the content bridge. Stop first, then reverse.
+      if (acting || pendingGate) return;
       // Live: re-run the inverse of THIS turn's action through the real execute pipeline.
       if (live && 'reverseAction' in engine) {
         const controller = new AbortController();
@@ -234,7 +239,7 @@ export function App() {
         },
       ]);
     },
-    [live, engine]
+    [live, engine, acting, pendingGate]
   );
 
   const choice = useCallback((picked: string) => send(picked), [send]);

@@ -7,8 +7,8 @@
 
 import { detectLanguageModel, type CapabilityState } from '../lib/capabilities';
 import type { EnginePort, RunHost, Turn } from './port';
-import type { GatePreview, PageInfo, ScanResult, Tool } from './types';
-import type { DeclaredToolDef, ExecOutcome } from './scan-types';
+import type { ActionType, GatePreview, PageInfo, ScanResult, Tool } from './types';
+import type { DeclaredToolDef, ElementFingerprint, ExecOutcome } from './scan-types';
 import { generateTools } from './toolgen';
 import { interpretDeclaredResult, mergeTools } from './fusion';
 import {
@@ -19,6 +19,7 @@ import {
   runSelectedTool,
   type GateOutcome,
   type LoopDeps,
+  type RescanResult,
   type ToolRunDeps,
 } from './agentLoop';
 import {
@@ -36,7 +37,11 @@ interface LanguageSession {
   destroy?(): void;
 }
 interface LanguageModelGlobal {
-  create(opts: { initialPrompts?: Array<{ role: string; content: string }> }): Promise<LanguageSession>;
+  create(opts: {
+    initialPrompts?: Array<{ role: string; content: string }>;
+    expectedInputs?: Array<{ type: string; languages: string[] }>;
+    expectedOutputs?: Array<{ type: string; languages: string[] }>;
+  }): Promise<LanguageSession>;
 }
 function getLanguageModel(): LanguageModelGlobal | null {
   const g = self as unknown as {
@@ -80,6 +85,10 @@ export function createLiveEngine(): LiveEngine {
   let cachedDeclared: DeclaredToolDef[] = [];
   // tool.id → scan handle id, so the loop can dispatch a MANUFACTURED Tool to its live element.
   const idToHandle = new Map<string, string>();
+  // tool.id → the element's fingerprint + action, captured at scan time. A one-tap reverse pins
+  // this so the undo re-resolves the EXACT element it toggled, immune to a later re-scan that
+  // remapped the (positional) handle to a different control (review finding).
+  const idToFingerprint = new Map<string, { fingerprint: ElementFingerprint; actionType: ActionType }>();
   let requestSeq = 0;
   const nextRequestId = (): string => `req-${(requestSeq += 1)}`;
   let turnSeq = 0;
@@ -88,9 +97,20 @@ export function createLiveEngine(): LiveEngine {
   // The on-device session, recreated when the tool-set (system prompt) changes.
   let session: LanguageSession | null = null;
   let sessionForTools: Tool[] | null = null;
+  // The signal of the run (runIntent / runTool / reverseAction) that currently owns the shared
+  // scan state. A public scan() is refused while an owner is set AND live, so a user re-Scan
+  // can't race the run's execute/re-scan and corrupt idToHandle / destroy the session mid-use
+  // (review finding). Tracked by OWNER identity (not a bare flag) so a stale run's delayed
+  // unwind after Stop can't clear a freshly-restarted run's guard, and a post-Stop re-Scan
+  // (owner aborted) is honoured rather than wrongly refused (second-review finding).
+  let inFlightOwner: AbortSignal | null = null;
   // report turn id → the reversible Tier-0 toggle it executed, for a per-turn one-tap undo.
-  // Keyed by turn so each undo re-runs ITS OWN action, never a newer (possibly gated) one.
-  const reverseActions = new Map<string, { tool: Tool; value?: string }>();
+  // Keyed by turn so each undo re-runs ITS OWN action, never a newer (possibly gated) one. The
+  // `pinned` fingerprint re-resolves the exact element the toggle acted on at undo time.
+  const reverseActions = new Map<
+    string,
+    { tool: Tool; value?: string; pinned?: { fingerprint: ElementFingerprint; actionType: ActionType } }
+  >();
 
   async function activeTabId(): Promise<number> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -136,17 +156,25 @@ export function createLiveEngine(): LiveEngine {
     }
   }
 
-  async function bridgeExecute(tool: Tool, value: string | undefined, dryRun: boolean): Promise<ExecOutcome> {
+  async function bridgeExecute(
+    tool: Tool,
+    value: string | undefined,
+    dryRun: boolean,
+    // A one-tap reverse pins the exact element it toggled, so the undo re-resolves THAT
+    // fingerprint rather than whatever the (positional) handle now maps to after a re-scan.
+    pinned?: { fingerprint: ElementFingerprint; actionType: ActionType }
+  ): Promise<ExecOutcome> {
     const handleId = idToHandle.get(tool.id);
-    if (!handleId) return { kind: 'declined', reason: 'unknown-handle' };
+    if (!handleId && !pinned) return { kind: 'declined', reason: 'unknown-handle' };
     try {
       const resp = await send<ExecuteResponse>({
         tag: PA_MSG,
         type: 'execute',
         requestId: nextRequestId(),
-        handleId,
+        handleId: handleId ?? '',
         value,
         dryRun,
+        pinned,
       });
       if (!resp.ok) return { kind: 'declined', reason: 'unknown-handle', detail: resp.reason };
       return resp.outcome;
@@ -207,7 +235,8 @@ export function createLiveEngine(): LiveEngine {
         const value = typeof args.value === 'string' ? args.value : undefined;
         return bridgeExecute(tool, value, false);
       },
-      registerReverse: (id, tool, value) => reverseActions.set(id, { tool, value }),
+      registerReverse: (id, tool, value) =>
+        reverseActions.set(id, { tool, value, pinned: idToFingerprint.get(tool.id) }),
       signal,
     };
   }
@@ -217,9 +246,91 @@ export function createLiveEngine(): LiveEngine {
     session?.destroy?.();
     const lm = getLanguageModel();
     if (!lm) throw new Error('on-device model not available');
-    session = await lm.create({ initialPrompts: [{ role: 'system', content: buildSystemPrompt(tools) }] });
+    // Declare the I/O language (English) so the Prompt API can attest to output safety and
+    // quality — without it Canary warns "No output language was specified" on every request.
+    session = await lm.create({
+      initialPrompts: [{ role: 'system', content: buildSystemPrompt(tools) }],
+      expectedInputs: [{ type: 'text', languages: ['en'] }],
+      expectedOutputs: [{ type: 'text', languages: ['en'] }],
+    });
     sessionForTools = tools;
     return session;
+  }
+
+  // The one real scan: refresh cachedTools + idToHandle, invalidate the stale session. Shared
+  // by the public `scan` (user re-Scan) and the loop's between-step re-scan (Phase 10.1).
+  async function doScan(signal?: AbortSignal): Promise<ScanResult> {
+    const requestId = nextRequestId();
+    const onAbort = (): void => {
+      void send({ tag: PA_MSG, type: 'abort', requestId }).catch(() => {});
+    };
+    if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
+    signal?.addEventListener('abort', onAbort, { once: true });
+    try {
+      await loadPageInfo();
+      const resp = await send<ScanResponse>({ tag: PA_MSG, type: 'scan', requestId });
+      if (!resp.ok) return { status: 'failed', reason: resp.reason };
+      if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
+      const raw = resp.result;
+      const manufactured = generateTools(raw.elements);
+      // Zip manufactured tools ↔ elements (generateTools preserves order) so we can dispatch
+      // by tool id. Build this from the MANUFACTURED list BEFORE fusion reorders it.
+      idToHandle.clear();
+      idToFingerprint.clear();
+      raw.elements.forEach((el, i) => {
+        const tool = manufactured[i];
+        if (tool) {
+          idToHandle.set(tool.id, el.handleId);
+          idToFingerprint.set(tool.id, { fingerprint: el.fingerprint, actionType: el.actionType });
+        }
+      });
+      // Fuse with the site's declared WebMCP tools (Step 8.1): declared win on overlap.
+      cachedTools = mergeTools(manufactured, cachedDeclared);
+      // The tool-set changed → the model's system prompt is stale.
+      session?.destroy?.();
+      session = null;
+      sessionForTools = null;
+      void loadPageInfo();
+      if (raw.status === 'partial') {
+        return { status: 'partial', tools: cachedTools, coverage: raw.coverage, note: raw.note ?? '' };
+      }
+      return { status: 'ok', tools: cachedTools, coverage: raw.coverage };
+    } catch (e) {
+      return { status: 'failed', reason: describeScanError(e) };
+    } finally {
+      signal?.removeEventListener('abort', onAbort);
+    }
+  }
+
+  // The multi-step loop's between-step re-scan (Phase 10.1): re-read the live page, rebuild the
+  // model session against the FRESH tool-set, and hand the loop a brain bound to it. On a
+  // failed/empty scan (or a model that won't wake) it hands back honestly instead — the loop
+  // stops rather than plan against a stale or empty page.
+  async function rescanForLoop(signal: AbortSignal): Promise<RescanResult> {
+    const res = await doScan(signal);
+    if (signal.aborted) {
+      return { handBack: { certainty: 'didnt', text: 'You stopped it — I didn’t do anything more.' } };
+    }
+    if (res.status === 'failed') {
+      return { handBack: { certainty: 'couldnt', text: `I re-scanned to plan the next step, but ${res.reason}` } };
+    }
+    if (cachedTools.length === 0) {
+      return {
+        handBack: { certainty: 'couldnt', text: 'After re-scanning I found no tools on this page, so I stopped.' },
+      };
+    }
+    let brainSession: LanguageSession;
+    try {
+      brainSession = await ensureSession(cachedTools);
+    } catch (e) {
+      return {
+        handBack: { certainty: 'couldnt', text: `The on-device model isn't ready to continue: ${(e as Error).message}` },
+      };
+    }
+    return {
+      tools: cachedTools,
+      brain: { prompt: (t: string) => brainSession.prompt(t, { responseConstraint: INTENT_SCHEMA }) },
+    };
   }
 
   return {
@@ -232,43 +343,18 @@ export function createLiveEngine(): LiveEngine {
     tools(): Tool[] {
       return cachedTools;
     },
-    async scan(signal?: AbortSignal): Promise<ScanResult> {
-      const requestId = nextRequestId();
-      const onAbort = (): void => {
-        void send({ tag: PA_MSG, type: 'abort', requestId }).catch(() => {});
-      };
-      if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
-      signal?.addEventListener('abort', onAbort, { once: true });
-      try {
-        await loadPageInfo();
-        const resp = await send<ScanResponse>({ tag: PA_MSG, type: 'scan', requestId });
-        if (!resp.ok) return { status: 'failed', reason: resp.reason };
-        if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
-        const raw = resp.result;
-        const manufactured = generateTools(raw.elements);
-        // Zip manufactured tools ↔ elements (generateTools preserves order) so we can dispatch
-        // by tool id. Build this from the MANUFACTURED list BEFORE fusion reorders it.
-        idToHandle.clear();
-        raw.elements.forEach((el, i) => {
-          const tool = manufactured[i];
-          if (tool) idToHandle.set(tool.id, el.handleId);
+    scan(signal?: AbortSignal): Promise<ScanResult> {
+      // Refuse a user-triggered re-Scan while a LIVE run owns the scan state — re-scanning
+      // mid-action would clear idToHandle + destroy the session under the running loop. An owner
+      // that's already aborted (Stop pressed, run still unwinding) is NOT live, so the re-Scan is
+      // honoured — the aborted run won't act again anyway.
+      if (inFlightOwner && !inFlightOwner.aborted) {
+        return Promise.resolve({
+          status: 'failed',
+          reason: 'PageAgent is in the middle of an action — Stop it first, then re-Scan.',
         });
-        // Fuse with the site's declared WebMCP tools (Step 8.1): declared win on overlap.
-        cachedTools = mergeTools(manufactured, cachedDeclared);
-        // The tool-set changed → the model's system prompt is stale.
-        session?.destroy?.();
-        session = null;
-        sessionForTools = null;
-        void loadPageInfo();
-        if (raw.status === 'partial') {
-          return { status: 'partial', tools: cachedTools, coverage: raw.coverage, note: raw.note ?? '' };
-        }
-        return { status: 'ok', tools: cachedTools, coverage: raw.coverage };
-      } catch (e) {
-        return { status: 'failed', reason: describeScanError(e) };
-      } finally {
-        signal?.removeEventListener('abort', onAbort);
       }
+      return doScan(signal);
     },
 
     async *runIntent(text: string, signal: AbortSignal, host: RunHost): AsyncIterable<Turn> {
@@ -302,10 +388,20 @@ export function createLiveEngine(): LiveEngine {
         brain: {
           prompt: (t: string) => brainSession.prompt(t, { responseConstraint: INTENT_SCHEMA }),
         },
+        // Opt into best-effort multi-step (Phase 10.1): re-scan + re-plan between steps.
+        rescan: rescanForLoop,
         ...makeToolRunDeps(host, signal, () => `Because you asked: “${text.trim()}”`),
       };
 
-      yield* runAgentLoop(text, deps);
+      // Own the scan state for the whole (possibly multi-step) run so a public re-Scan can't
+      // race it. Clear ownership only if THIS run still holds it — a run restarted after Stop
+      // may already own it, and our delayed unwind must not clear the new run's guard.
+      inFlightOwner = signal;
+      try {
+        yield* runAgentLoop(text, deps);
+      } finally {
+        if (inFlightOwner === signal) inFlightOwner = null;
+      }
     },
 
     // Run ONE tool the user chose by hand from the Tools tab (Execute). Same tier → gate →
@@ -319,7 +415,12 @@ export function createLiveEngine(): LiveEngine {
       if (signal.aborted) return;
       const args: Record<string, unknown> = value != null && value !== '' ? { value } : {};
       const deps = makeToolRunDeps(host, signal, (t) => `Because you ran “${t.name}” from the Tools list.`);
-      yield* runSelectedTool(tool, args, deps);
+      inFlightOwner = signal;
+      try {
+        yield* runSelectedTool(tool, args, deps);
+      } finally {
+        if (inFlightOwner === signal) inFlightOwner = null;
+      }
     },
 
     async *reverseAction(turnId: string, signal: AbortSignal): AsyncIterable<Turn> {
@@ -330,10 +431,19 @@ export function createLiveEngine(): LiveEngine {
         return;
       }
       // Only reversible Tier-0 toggles are ever registered, so re-running the SAME tool is a
-      // genuine inverse and needs no gate. A used undo is consumed so it can't double-fire.
+      // genuine inverse and needs no gate. A used undo is consumed so it can't double-fire. We
+      // dispatch against the PINNED fingerprint captured when it ran, so a between-step re-scan
+      // that remapped the (positional) handle can't make the undo flip a different control — the
+      // pinned fingerprint re-resolves the original element, or declines honestly (review finding).
       reverseActions.delete(turnId);
-      const { tool, value } = entry;
-      const outcome = await bridgeExecute(tool, value, false);
+      const { tool, value, pinned } = entry;
+      inFlightOwner = signal;
+      let outcome: ExecOutcome;
+      try {
+        outcome = await bridgeExecute(tool, value, false, pinned);
+      } finally {
+        if (inFlightOwner === signal) inFlightOwner = null;
+      }
       if (signal.aborted) return;
       if (outcome.kind === 'executed' && outcome.observed.verified) {
         yield { id: nextTurnId(), kind: 'report', certainty: 'done', text: `Reversed — ${outcome.observed.summary}` };

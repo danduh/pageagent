@@ -98,13 +98,15 @@ interface TurnViewProps {
   turn: Turn;
   onReverse: (turnId: string) => void;
   onChoice: (choice: string) => void;
+  /** A run is in flight — the one-tap reverse is held until it finishes (Stop first). */
+  reverseDisabled?: boolean;
 }
 
 /** Render one transcript turn, walled by provenance. The three classes are visually
  *  and semantically distinct: your request (a right-aligned bubble), read-only page
  *  content (an inert mono/filament blockquote that can never read as an instruction),
  *  and the agent (plain prose / a certainty-laddered report / a clarify question). */
-function TurnView({ turn, onReverse, onChoice }: TurnViewProps) {
+function TurnView({ turn, onReverse, onChoice, reverseDisabled }: TurnViewProps) {
   if (turn.kind === 'page-quote') {
     return (
       <div className="pac__turn pac__turn--page">
@@ -146,7 +148,7 @@ function TurnView({ turn, onReverse, onChoice }: TurnViewProps) {
         <p className="pac__prose">{turn.text}</p>
         {turn.reverse ? (
           <div className="pac__actions">
-            <Button variant="ghost" onClick={() => onReverse(turn.id)}>
+            <Button variant="ghost" onClick={() => onReverse(turn.id)} disabled={reverseDisabled}>
               {turn.reverse.label}
             </Button>
           </div>
@@ -273,7 +275,13 @@ export function Chat({
           aria-label="Conversation with this page"
         >
           {turns.map((turn) => (
-            <TurnView key={turn.id} turn={turn} onReverse={onReverse} onChoice={onChoice} />
+            <TurnView
+              key={turn.id}
+              turn={turn}
+              onReverse={onReverse}
+              onChoice={onChoice}
+              reverseDisabled={acting}
+            />
           ))}
         </div>
       </div>

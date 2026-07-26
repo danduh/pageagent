@@ -120,7 +120,9 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       return;
     }
     case 'execute': {
-      const entry = scanCache.get(message.handleId);
+      // A pinned fingerprint (one-tap reverse) re-resolves the ORIGINAL element directly,
+      // bypassing the positional scanCache — otherwise falls back to the handle's cached one.
+      const entry = message.pinned ?? scanCache.get(message.handleId);
       if (!entry) {
         const resp: ExecuteResponse = { ok: true, outcome: { kind: 'declined', reason: 'unknown-handle' } };
         sendResponse(resp);
