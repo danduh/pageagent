@@ -9,6 +9,7 @@ import { executeAction } from './execute';
 import {
   isPanelToContent,
   isWireMessage,
+  PA_MSG,
   PA_WIRE,
   type ExecuteDeclaredResponse,
   type ExecuteResponse,
@@ -80,6 +81,46 @@ const abortedRequests = new Set<string>();
 // Last scan's handle → fingerprint map, so EXECUTE can re-resolve against the LIVE DOM.
 const scanCache = new Map<string, { fingerprint: ElementFingerprint; actionType: ActionType }>();
 
+// --- Freshness watch (Step 8.2): notice when the page drifts from the last scan -----------
+// A cheap MutationObserver COUNTS DOM changes (it never processes them) and a short poll
+// watches location.href for SPA route changes. Past a threshold, or on navigation, we push a
+// one-shot `page-changed` notice to the panel — one per stale episode, reset when the next
+// scan starts, so we never spam. All state resets at scan time (mutations counted SINCE scan).
+const MUTATION_THRESHOLD = 30;
+let mutationCount = 0;
+let scannedUrl = location.href;
+let noticeSent = false; // one notice per stale episode until the next scan resets it
+
+function pushPageChanged(reason: 'mutation' | 'navigation'): void {
+  if (noticeSent) return;
+  noticeSent = true;
+  try {
+    void chrome.runtime.sendMessage({ tag: PA_MSG, type: 'page-changed', reason, url: location.href }).catch(() => {});
+  } catch {
+    /* the panel/runtime may be gone — ignore */
+  }
+}
+
+function resetFreshnessWatch(): void {
+  mutationCount = 0;
+  scannedUrl = location.href;
+  noticeSent = false;
+}
+
+new MutationObserver((records) => {
+  for (const r of records) mutationCount += r.addedNodes.length + r.removedNodes.length + 1;
+  if (mutationCount >= MUTATION_THRESHOLD) pushPageChanged('mutation');
+}).observe(document.documentElement, { childList: true, subtree: true, attributes: false });
+
+function checkUrl(): void {
+  if (location.href !== scannedUrl) pushPageChanged('navigation');
+}
+window.addEventListener('popstate', checkUrl);
+window.addEventListener('hashchange', checkUrl);
+// SPA pushState/replaceState fire no event and the MAIN-world History is out of our reach, so
+// poll location.href here (cheap string compare) to catch client-side route changes too.
+setInterval(checkUrl, 1000);
+
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (!isPanelToContent(message)) return; // not ours — let other listeners handle it
 
@@ -109,6 +150,9 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         for (const el of result.elements) {
           scanCache.set(el.handleId, { fingerprint: el.fingerprint, actionType: el.actionType });
         }
+        // The tool-set is now current for THIS DOM/URL — restart the freshness watch so drift
+        // is counted from here and the next stale episode can push a fresh notice (Step 8.2).
+        resetFreshnessWatch();
         const resp: ScanResponse = { ok: true, result };
         sendResponse(resp);
       } catch (e) {
