@@ -65,6 +65,12 @@ describe('interpretDeclaredResult — never overclaims a site tool', () => {
     expect(o.verified).toBe(false);
     expect(o.summary).toContain('unknown preference: undefined');
   });
+
+  it('an explicit success wins over an `error` field (a search returning "no match" is not a failure)', () => {
+    const o = interpretDeclaredResult({ success: true, results: [], error: 'no match' });
+    expect(o.verified).toBe(true);
+    expect(o.failed).toBeFalsy();
+  });
 });
 
 describe('describeArgs — model-readable arg spec for a site tool', () => {

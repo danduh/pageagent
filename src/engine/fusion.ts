@@ -119,6 +119,9 @@ function looksLikeFailure(v: unknown): boolean {
   if (v === false) return true;
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
+    // An explicit success signal wins over an ambiguous `error` field, so a search-style tool
+    // returning { success: true, error: 'no match' } reads as success (and doesn't halt a chain).
+    if (o.success === true || o.ok === true || o.isError === false) return false;
     if (o.success === false || o.ok === false || o.isError === true) return true;
     if (typeof o.error === 'string' && o.error.trim() !== '') return true;
   }
