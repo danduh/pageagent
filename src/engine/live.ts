@@ -6,7 +6,7 @@
 // reports on the certainty ladder. See ADR 0001 for the topology.
 
 import { detectLanguageModel, type CapabilityState } from '../lib/capabilities';
-import type { EnginePort, RunHost, Turn } from './port';
+import type { EnginePort, PageChangeKind, RunHost, Turn } from './port';
 import type { ActionType, GatePreview, PageInfo, ScanResult, Tool } from './types';
 import type { DeclaredToolDef, ElementFingerprint, ExecOutcome } from './scan-types';
 import { generateTools } from './toolgen';
@@ -23,6 +23,7 @@ import {
   type ToolRunDeps,
 } from './agentLoop';
 import {
+  isPageChangedNotice,
   PA_MSG,
   type ExecuteDeclaredResponse,
   type ExecuteResponse,
@@ -91,6 +92,13 @@ export function createLiveEngine(): LiveEngine {
   const idToFingerprint = new Map<string, { fingerprint: ElementFingerprint; actionType: ActionType }>();
   let requestSeq = 0;
   const nextRequestId = (): string => `req-${(requestSeq += 1)}`;
+  // The tab (and its window) the current tool-set was scanned from. EVERY message for this
+  // tool-set targets boundTabId — never "whatever tab is active now" — so an execute can't
+  // land on a different tab the user switched to (Step 8.2 review finding). Also used to filter
+  // freshness signals to this tab, and to this window (so a tab switch in another window is
+  // not mistaken for switching away from our page).
+  let boundTabId: number | null = null;
+  let boundWindowId: number | null = null;
   let turnSeq = 0;
   const nextTurnId = (): string => `live-${(turnSeq += 1)}`;
 
@@ -109,16 +117,24 @@ export function createLiveEngine(): LiveEngine {
   // `pinned` fingerprint re-resolves the exact element the toggle acted on at undo time.
   const reverseActions = new Map<
     string,
-    { tool: Tool; value?: string; pinned?: { fingerprint: ElementFingerprint; actionType: ActionType } }
+    {
+      tool: Tool;
+      value?: string;
+      pinned?: { fingerprint: ElementFingerprint; actionType: ActionType };
+      // The tab this undo belongs to. If a later re-scan re-binds the tools to a DIFFERENT tab,
+      // the undo declines rather than flip an identical control on the now-bound tab (review finding).
+      tabId: number | null;
+    }
   >();
 
-  async function activeTabId(): Promise<number> {
+  async function activeTab(): Promise<{ id: number; windowId: number }> {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (tab?.id == null) throw new Error('No active tab');
-    return tab.id;
+    return { id: tab.id, windowId: tab.windowId ?? -1 };
   }
+  // Route to the tab this tool-set was scanned from; before the first scan, the active tab.
   async function send<T>(message: PanelToContent): Promise<T> {
-    const tabId = await activeTabId();
+    const tabId = boundTabId ?? (await activeTab()).id;
     return (await chrome.tabs.sendMessage(tabId, message)) as T;
   }
 
@@ -236,7 +252,7 @@ export function createLiveEngine(): LiveEngine {
         return bridgeExecute(tool, value, false);
       },
       registerReverse: (id, tool, value) =>
-        reverseActions.set(id, { tool, value, pinned: idToFingerprint.get(tool.id) }),
+        reverseActions.set(id, { tool, value, pinned: idToFingerprint.get(tool.id), tabId: boundTabId }),
       signal,
     };
   }
@@ -258,13 +274,27 @@ export function createLiveEngine(): LiveEngine {
   }
 
   // The one real scan: refresh cachedTools + idToHandle, invalidate the stale session. Shared
-  // by the public `scan` (user re-Scan) and the loop's between-step re-scan (Phase 10.1).
-  async function doScan(signal?: AbortSignal): Promise<ScanResult> {
+  // by the public `scan` (user re-Scan → rebind to the active tab) and the loop's between-step
+  // re-scan (Phase 10.1 → rebind:false, so it re-scans the SAME tab the run is scoped to even
+  // if the user switched tabs mid-loop).
+  async function doScan(signal?: AbortSignal, opts: { rebind?: boolean } = {}): Promise<ScanResult> {
     const requestId = nextRequestId();
     const onAbort = (): void => {
       void send({ tag: PA_MSG, type: 'abort', requestId }).catch(() => {});
     };
     if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
+    // Bind this tool-set to the tab we're ABOUT to scan (captured once, at the start) so every
+    // send for it — page-info, scan, execute — targets that tab even if the user switches away
+    // mid-scan (review finding). A switch during the scan then reads as stale, not fresh.
+    if (opts.rebind !== false) {
+      try {
+        const t = await activeTab();
+        boundTabId = t.id;
+        boundWindowId = t.windowId;
+      } catch {
+        /* keep the previous binding */
+      }
+    }
     signal?.addEventListener('abort', onAbort, { once: true });
     try {
       await loadPageInfo();
@@ -308,7 +338,8 @@ export function createLiveEngine(): LiveEngine {
   // failed/empty scan (or a model that won't wake) it hands back honestly instead — the loop
   // stops rather than plan against a stale or empty page.
   async function rescanForLoop(signal: AbortSignal): Promise<RescanResult> {
-    const res = await doScan(signal);
+    // Keep the run scoped to the tab it started on — never hop to a tab the user switched to.
+    const res = await doScan(signal, { rebind: false });
     if (signal.aborted) {
       return { handBack: { certainty: 'didnt', text: 'You stopped it — I didn’t do anything more.' } };
     }
@@ -343,6 +374,36 @@ export function createLiveEngine(): LiveEngine {
     },
     tools(): Tool[] {
       return cachedTools;
+    },
+    onPageChange(cb: (kind: PageChangeKind) => void): () => void {
+      // A content-script drift notice (DOM mutation / SPA route change) — only once we're bound
+      // to a tab, and only from THAT tab. sender.tab is set by the browser, not the page.
+      const onRuntime = (msg: unknown, sender: chrome.runtime.MessageSender): void => {
+        if (!isPageChangedNotice(msg)) return;
+        if (boundTabId == null || sender.tab?.id !== boundTabId) return;
+        cb(msg.reason);
+      };
+      // The active tab changed WITHIN our window: away from our tab → the tools are for the
+      // previous page; back to our tab → clear that (a switch in another window is ignored).
+      const onActivated = (info: { tabId: number; windowId: number }): void => {
+        if (boundTabId == null || info.windowId !== boundWindowId) return;
+        cb(info.tabId === boundTabId ? 'tab-return' : 'tab-switch');
+      };
+      // Our tab navigated / reloaded (content script torn down + re-injected) → stale. A
+      // same-URL reload carries no change.url, so also treat a 'loading' transition as drift.
+      const onUpdated = (tabId: number, change: { url?: string; status?: string }): void => {
+        if (boundTabId != null && tabId === boundTabId && (change.url != null || change.status === 'loading')) {
+          cb('navigation');
+        }
+      };
+      chrome.runtime.onMessage.addListener(onRuntime);
+      chrome.tabs.onActivated.addListener(onActivated);
+      chrome.tabs.onUpdated.addListener(onUpdated);
+      return () => {
+        chrome.runtime.onMessage.removeListener(onRuntime);
+        chrome.tabs.onActivated.removeListener(onActivated);
+        chrome.tabs.onUpdated.removeListener(onUpdated);
+      };
     },
     scan(signal?: AbortSignal): Promise<ScanResult> {
       // Refuse a user-triggered re-Scan while a LIVE run owns the scan state — re-scanning
@@ -429,6 +490,19 @@ export function createLiveEngine(): LiveEngine {
       const entry = reverseActions.get(turnId);
       if (!entry) {
         yield { id: nextTurnId(), kind: 'agent', text: 'There’s nothing to undo for that step.' };
+        return;
+      }
+      // The tools now point at a DIFFERENT tab than the one this undo ran on (a re-scan re-bound
+      // them) — flipping "the same" control on the current tab would be the wrong page, so decline
+      // (review finding). It stays consumed so it can't fire later against the right tab either.
+      if (entry.tabId !== boundTabId) {
+        reverseActions.delete(turnId);
+        yield {
+          id: nextTurnId(),
+          kind: 'report',
+          certainty: 'couldnt',
+          text: "That undo is for a different page than the one I'm on now — open it again and toggle it there, or re-scan it.",
+        };
         return;
       }
       // Only reversible Tier-0 toggles are ever registered, so re-running the SAME tool is a

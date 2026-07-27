@@ -71,6 +71,27 @@ export type PanelToContent =
   | ExecuteRequest
   | ExecuteDeclaredRequest;
 
+/**
+ * Content → panel PUSH (fire-and-forget via chrome.runtime.sendMessage, NOT a response): the
+ * live page drifted since the last scan — the DOM mutated past a threshold or the URL changed
+ * — so the tool-set may be stale (Step 8.2). The panel filters these to the tab its tools
+ * belong to and flips the header to Stale.
+ */
+export interface PageChangedNotice {
+  tag: typeof PA_MSG;
+  type: 'page-changed';
+  reason: 'mutation' | 'navigation';
+  url: string;
+}
+export function isPageChangedNotice(v: unknown): v is PageChangedNotice {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    (v as { tag?: unknown }).tag === PA_MSG &&
+    (v as { type?: unknown }).type === 'page-changed'
+  );
+}
+
 // --- Content script → panel (sendResponse payloads) -------------------------
 export type ScanResponse =
   | { ok: true; result: RawScanResult }

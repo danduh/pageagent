@@ -53,6 +53,10 @@ export function createStubEngine(opts: StubOptions = {}): EnginePort {
     tools(): Tool[] {
       return tools;
     },
+    // The stub has no live page to drift; the gallery drives freshness directly (Step 8.2).
+    onPageChange(): () => void {
+      return () => {};
+    },
     async scan(signal?: AbortSignal): Promise<ScanResult> {
       await delay(stepMs * 1.5, signal);
       if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };

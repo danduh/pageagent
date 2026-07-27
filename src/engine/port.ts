@@ -38,6 +38,12 @@ export interface RunHost {
   confirm(preview: GatePreview): Promise<boolean>;
 }
 
+/**
+ * A live page-drift signal (Step 8.2): the DOM mutated, the route changed, the user switched
+ * away to another tab, or switched back to the tools' own tab.
+ */
+export type PageChangeKind = 'mutation' | 'navigation' | 'tab-switch' | 'tab-return';
+
 export interface EnginePort {
   /** Passive capability read (never downloads). */
   capability(): Promise<CapabilityState>;
@@ -47,6 +53,11 @@ export interface EnginePort {
   scan(signal?: AbortSignal): Promise<ScanResult>;
   /** The current generated tool-set (browsable by the user; Tools surface). */
   tools(): Tool[];
+  /**
+   * Subscribe to live page-drift signals so the surfaces can flip to Stale and guard running
+   * before a re-scan (Step 8.2). Returns an unsubscribe fn. The stub is a no-op.
+   */
+  onPageChange(cb: (kind: PageChangeKind) => void): () => void;
   /**
    * Run the user's plain-language intent. Yields transcript turns as it progresses
    * — the capped intent-loop's steps in the real engine, scripted turns in the stub.

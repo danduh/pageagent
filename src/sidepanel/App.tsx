@@ -2,14 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createStubEngine } from '../engine/stub';
 import { createLiveEngine, isExtensionRuntime, type LiveEngine } from '../engine/live';
 import type { RunHost, Turn } from '../engine/port';
-import type {
-  FreshnessState,
-  GatePreview,
-  LocusState,
-  PageInfo,
-  ScanResult,
-  Tool,
-} from '../engine/types';
+import type { FreshnessState, GatePreview, LocusState, PageInfo, ScanResult, Tool } from '../engine/types';
+import { FRESH, nextFreshness, type FreshnessSignal, type FreshnessView } from '../engine/freshness';
 import type { CapabilityState } from '../lib/capabilities';
 import { Button, Tab, Tabs, Toggle } from '../components/primitives';
 import { Header } from '../surfaces/Header';
@@ -43,7 +37,11 @@ export function App() {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [acting, setActing] = useState(false);
   const [status, setStatus] = useState('');
-  const [freshness, setFreshness] = useState<FreshnessState>('fresh');
+  // Freshness/staleness (Step 8.2). `fresh` is the sticky page-drift view (mutation/navigation,
+  // cleared by a scan); `onWrongTab` is the transient "you're on a different tab than the tools"
+  // condition (cleared by switching back or re-scanning). The header + run-guards use both.
+  const [fresh, setFresh] = useState<FreshnessView>(FRESH);
+  const [onWrongTab, setOnWrongTab] = useState(false);
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [locus, setLocus] = useState<LocusState>('on-device');
   const [cloudOnce, setCloudOnce] = useState(false);
@@ -59,6 +57,31 @@ export function App() {
   const tools: Tool[] = engine.tools();
   const degraded = locus === 'unavailable' && !cloudOnce;
 
+  // Combine sticky drift with the transient wrong-tab condition (Step 8.2). A run is guarded
+  // when EITHER holds; the header shows Scanning first, else Stale, else the drift state.
+  const toolsStale = fresh.toolsStale || onWrongTab;
+  // A genuine scan failure keeps its own header state ahead of the generic stale relabel (a
+  // failed scan also sets toolsStale, so the run-guard is unaffected either way).
+  const freshnessState: FreshnessState =
+    fresh.state === 'scanning'
+      ? 'scanning'
+      : fresh.state === 'failed'
+        ? 'failed'
+        : toolsStale
+          ? 'stale'
+          : fresh.state;
+  const staleReason = fresh.toolsStale
+    ? fresh.reason
+    : onWrongTab
+      ? 'these tools are for the previous page'
+      : undefined;
+
+  // Feed one signal through the freshness state machine (Step 8.2).
+  const signalFreshness = useCallback(
+    (sig: FreshnessSignal) => setFresh((cur) => nextFreshness(cur, sig)),
+    []
+  );
+
   useEffect(() => {
     let alive = true;
     void engine.capability().then((c) => {
@@ -66,15 +89,29 @@ export function App() {
       setCapability(c);
       setLocus(c.languageModel === 'unavailable' ? 'unavailable' : 'on-device');
     });
-    // Prime the Scan surface with an initial detection.
+    // Prime the Scan surface with an initial detection (onWrongTab starts false).
     void engine.scan().then((res) => {
-      if (alive) setScanResult(res);
+      if (!alive) return;
+      setScanResult(res);
+      signalFreshness({ kind: res.status === 'failed' ? 'scan-failed' : 'scanned' });
     });
     inputRef.current?.focus();
     return () => {
       alive = false;
     };
-  }, [engine]);
+  }, [engine, signalFreshness]);
+
+  // Live page-drift → Stale (Step 8.2). Drift (mutation/navigation) is sticky; the tab-switch /
+  // tab-return pair toggles the transient wrong-tab condition.
+  useEffect(
+    () =>
+      engine.onPageChange((kind) => {
+        if (kind === 'tab-switch') setOnWrongTab(true);
+        else if (kind === 'tab-return') setOnWrongTab(false);
+        else signalFreshness({ kind });
+      }),
+    [engine, signalFreshness]
+  );
 
   // Resolve an open gate promise (live loop) and clear the gate. No-op for the stub gate.
   const resolveGate = useCallback((ok: boolean) => {
@@ -104,12 +141,33 @@ export function App() {
     []
   );
 
+  // When the tool-set is stale, refuse a run PROACTIVELY with an honest reason instead of
+  // acting on controls that may have moved — the user re-scans (header re-Scan) and retries.
+  const refuseStale = useCallback(() => {
+    setTab('chat');
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: `stale-${prev.length}`,
+        kind: 'report',
+        certainty: 'couldnt',
+        text: `${staleReason ?? 'The page changed'} — Scan this page again, then try.`,
+      },
+    ]);
+    inputRef.current?.focus();
+  }, [staleReason]);
+
   const send = useCallback(
     (text: string) => {
       const trimmed = text.trim();
       if (!trimmed || acting || pendingGate) return;
       setTab('chat');
       setTurns((prev) => [...prev, { id: `u-${prev.length}`, kind: 'user', text: trimmed }]);
+      // The page drifted / we're on another tab — don't act on a possibly-stale tool-set (8.2).
+      if (live && toolsStale) {
+        refuseStale();
+        return;
+      }
       // The Scope-A mock gate/classifier is a fixture-only demo. In the live engine the
       // real Chat loop (with real tiering + gate) lands in Phase 9, so here we send every
       // request straight to runIntent, which hands back honestly rather than faking a gate.
@@ -139,23 +197,45 @@ export function App() {
         }
       })();
     },
-    [acting, engine, pendingGate, live, host]
+    [acting, engine, pendingGate, live, host, toolsStale, refuseStale]
   );
 
   const rescan = useCallback(() => {
-    setFreshness('scanning');
+    // A run owns the page — re-scanning would be refused and misread as a failure; ask the user
+    // to Stop first instead of falsely marking the (still-valid) tool-set stale (review finding).
+    if (acting) {
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: `busy-${prev.length}`,
+          kind: 'report',
+          certainty: 'couldnt',
+          text: 'I’m in the middle of an action — Stop it first, then Scan.',
+        },
+      ]);
+      return;
+    }
+    // Reset wrong-tab at scan START: we bind to the tab we're on now, so a switch that happens
+    // DURING the scan (onActivated) survives to the completed view instead of being cleared.
+    setOnWrongTab(false);
+    signalFreshness({ kind: 'scanning' });
     const controller = new AbortController();
     void engine.scan(controller.signal).then((res) => {
       setScanResult(res);
-      setFreshness(res.status === 'failed' ? 'failed' : 'fresh');
+      signalFreshness({ kind: res.status === 'failed' ? 'scan-failed' : 'scanned' });
     });
-  }, [engine]);
+  }, [engine, signalFreshness, acting]);
 
   // Execute: run one tool by hand. Destructive (risk ≥ 1) routes through the gate;
   // a reversible tool flows and reports. The report lands in the transcript (traceable).
   const runTool = useCallback(
     (tool: Tool, value?: string) => {
       if (pendingGate || acting) return;
+      // The page drifted / we're on another tab — refuse rather than click a control that moved.
+      if (live && toolsStale) {
+        refuseStale();
+        return;
+      }
       // Live engine: run the chosen tool for real through the SAME tier → gate → execute →
       // report pipeline as Chat (a destructive tool hits the Confirm-gate first; a declared
       // WebMCP tool is invoked via the site's handler).
@@ -197,7 +277,7 @@ export function App() {
         },
       ]);
     },
-    [pendingGate, acting, live, engine, host]
+    [pendingGate, acting, live, engine, host, toolsStale, refuseStale]
   );
 
   const reverse = useCallback(
@@ -309,7 +389,7 @@ export function App() {
     <div className="pa">
       <Header
         page={page}
-        freshness={freshness}
+        freshness={freshnessState}
         locus={locus}
         acting={acting}
         onRescan={rescan}
@@ -354,7 +434,7 @@ export function App() {
             />
           ))}
         {tab === 'tools' && <ToolsSurface tools={tools} onRun={runTool} />}
-        {tab === 'scan' && <ScanGen freshness={freshness} result={scanResult} onRescan={rescan} />}
+        {tab === 'scan' && <ScanGen freshness={freshnessState} result={scanResult} onRescan={rescan} />}
       </div>
 
       {pendingGate ? (
