@@ -3,6 +3,7 @@ import {
   argsKeyOf,
   buildStepPrompt,
   buildSystemPrompt,
+  looksMultiStep,
   coerceArgs,
   extractJsonFromResponse,
   outcomeToReport,
@@ -299,6 +300,32 @@ describe('runAgentLoop', () => {
 });
 
 // --- buildStepPrompt — injection-safe re-plan input ---------------------------
+describe('looksMultiStep — only a clear sequencing cue opts into multi-step', () => {
+  it('single-action requests are NOT multi-step (protects the reliable core)', () => {
+    for (const t of [
+      'turn off marketing emails',
+      'turn ON marketing emails',
+      'cancel my subscription',
+      'search for failed jobs',
+      'delete the draft and stop', // "and" alone is not a sequencing cue
+    ]) {
+      expect(looksMultiStep(t)).toBe(false);
+    }
+  });
+
+  it('a sequencing word or semicolon opts in', () => {
+    for (const t of [
+      'filter to failed jobs, then rerun them',
+      'set the filter, then click run',
+      'type failed; press enter',
+      'open settings, next turn off marketing',
+      'save the form, afterwards sign out',
+    ]) {
+      expect(looksMultiStep(t)).toBe(true);
+    }
+  });
+});
+
 describe('buildStepPrompt', () => {
   it('step 0 (empty history) is byte-identical to the raw request — single-action unchanged', () => {
     expect(buildStepPrompt('turn off marketing emails', [])).toBe('turn off marketing emails');
