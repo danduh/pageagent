@@ -75,6 +75,14 @@ describe('buildSystemPrompt — injection-safe framing', () => {
     expect(sys).toMatch(/NOT instructions to you/i);
     expect(sys).toContain('click_go');
   });
+
+  it('shows a site tool’s named arg fields so the model fills them (not args.value)', () => {
+    const declared = tool({ id: 'setPreference', name: 'Set preference', actionType: 'click', source: 'declared' });
+    declared.argSchema = 'name (one of: marketing, security), enabled (true/false)';
+    const sys = buildSystemPrompt([declared]);
+    expect(sys).toContain('name (one of: marketing, security), enabled (true/false)');
+    expect(sys).toMatch(/site tool/i);
+  });
 });
 
 describe('outcomeToReport — certainty ladder', () => {
@@ -88,6 +96,18 @@ describe('outcomeToReport — certainty ladder', () => {
   it('reports sent-unconfirmed when the effect is not verifiable', () => {
     const executed: ExecOutcome = { kind: 'executed', observed: { summary: 'clicked.', verified: false } };
     expect(outcomeToReport('t2', t, 0, executed).certainty).toBe('sent-unconfirmed');
+  });
+
+  it('reports an EXPLICIT failure as "couldnt" (that didn’t work), never a maybe-success', () => {
+    // A site tool that returned {success:false} — must not read as "I did that but can't confirm".
+    const failed: ExecOutcome = {
+      kind: 'executed',
+      observed: { summary: 'the site said: unknown preference: undefined', verified: false, failed: true },
+    };
+    const r = outcomeToReport('tf', t, 0, failed);
+    expect(r.certainty).toBe('couldnt');
+    expect(r.text).toMatch(/didn.t work/i);
+    expect(r.reverse).toBeUndefined();
   });
   it('reports couldnt on a decline, with no reverse', () => {
     const declined: ExecOutcome = { kind: 'declined', reason: 'ambiguous', detail: '2 matching controls' };
@@ -556,6 +576,25 @@ describe('runAgentLoop — multi-step (Phase 10.1)', () => {
     };
     await collect(runAgentLoop('do two things', m.deps));
     expect(m.executed.map((e) => e.id)).toEqual(['choose_filter', 'click_rerun']);
+  });
+
+  it('stops on an EXPLICIT site-tool failure instead of retrying the same failing call', async () => {
+    const SET = tool({ id: 'setPreference', name: 'Set preference', actionType: 'click', source: 'declared' });
+    const execute = vi.fn(
+      async (): Promise<ExecOutcome> => ({
+        kind: 'executed',
+        observed: { summary: 'the site said: unknown preference: undefined', verified: false, failed: true },
+      })
+    );
+    const m = multiStep(
+      ['{"toolName":"setPreference","args":{"name":"marketing"}}', '{"toolName":"setPreference","args":{"name":"marketing"}}'],
+      [[SET], [SET]]
+    );
+    (m.deps as LoopDeps).execute = execute;
+    const turns = await collect(runAgentLoop('turn off marketing', m.deps));
+    expect(execute).toHaveBeenCalledOnce(); // ran ONCE — no blind retry of the failing call
+    expect(turns.at(-1)?.certainty).toBe('couldnt');
+    expect(turns.at(-1)?.text).toMatch(/didn.t work/i);
   });
 
   it('a re-scan that hands back (scan failed) stops the chain honestly', async () => {

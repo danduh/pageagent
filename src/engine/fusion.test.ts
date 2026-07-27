@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { declaredToTool, interpretDeclaredResult, mergeTools, schemaParamNames } from './fusion';
+import { declaredToTool, describeArgs, interpretDeclaredResult, mergeTools, schemaParamNames } from './fusion';
 import type { Tool } from './types';
 import type { DeclaredToolDef } from './scan-types';
 
@@ -56,6 +56,40 @@ describe('interpretDeclaredResult — never overclaims a site tool', () => {
     const o = interpretDeclaredResult({ recipes: ['a', 'b'] });
     expect(o.verified).toBe(true);
     expect(o.summary).toContain('recipes');
+    expect(o.failed).toBeFalsy();
+  });
+
+  it('flags an explicit failure with `failed` and surfaces the site’s own error text', () => {
+    const o = interpretDeclaredResult({ success: false, error: 'unknown preference: undefined' });
+    expect(o.failed).toBe(true);
+    expect(o.verified).toBe(false);
+    expect(o.summary).toContain('unknown preference: undefined');
+  });
+
+  it('an explicit success wins over an `error` field (a search returning "no match" is not a failure)', () => {
+    const o = interpretDeclaredResult({ success: true, results: [], error: 'no match' });
+    expect(o.verified).toBe(true);
+    expect(o.failed).toBeFalsy();
+  });
+});
+
+describe('describeArgs — model-readable arg spec for a site tool', () => {
+  it('lists named fields with enums and booleans, marking non-required as optional', () => {
+    expect(
+      describeArgs({
+        type: 'object',
+        properties: { name: { type: 'string', enum: ['marketing', 'security'] }, enabled: { type: 'boolean' } },
+        required: ['name', 'enabled'],
+      })
+    ).toBe('name (one of: marketing, security), enabled (true/false)');
+    expect(
+      describeArgs({ type: 'object', properties: { name: { type: 'string' }, note: { type: 'string' } }, required: ['name'] })
+    ).toBe('name (string), note (string) [optional]');
+  });
+
+  it('returns undefined when there are no properties', () => {
+    expect(describeArgs({ type: 'object' })).toBeUndefined();
+    expect(describeArgs(null)).toBeUndefined();
   });
 });
 

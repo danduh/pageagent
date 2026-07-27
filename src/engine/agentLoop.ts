@@ -28,7 +28,8 @@ export const INTENT_SCHEMA = {
     },
     args: {
       type: 'object',
-      description: 'Arguments — put the value in args.value for type/choose tools.',
+      description:
+        'Arguments. For a page type/choose control, put the single value in args.value. For a SITE tool, set the exact named fields it lists (e.g. {"name":"marketing","enabled":false}) — NOT args.value.',
     },
     reply: { type: 'string', description: 'Plain reply to the user; only when toolName is "done".' },
   },
@@ -122,7 +123,8 @@ export function buildSystemPrompt(tools: Tool[]): string {
           .map((t) => {
             const desc = t.description ? ` — ${t.description}` : '';
             let argHint = '';
-            if (t.source === 'declared' && t.valueLabel) argHint = ` (site tool; fill args: ${t.valueLabel})`;
+            if (t.source === 'declared' && t.argSchema) argHint = ` (site tool — set args to these exact fields: ${t.argSchema})`;
+            else if (t.source === 'declared' && t.valueLabel) argHint = ` (site tool; fill args: ${t.valueLabel})`;
             else if (t.actionType === 'type' || t.actionType === 'choose') argHint = ' (needs args.value)';
             return `- ${t.id}: ${t.name}${desc}${argHint}`;
           })
@@ -145,8 +147,9 @@ RULES:
 1. Choose exactly ONE tool id from the list above, or "done".
 2. If several tools could match, or none clearly matches, emit "done" with a "reply" that asks which they mean — NEVER guess.
 3. For a type or choose tool, put the user's value in args.value.
-4. Never invent a tool id. Never wrap the JSON in code fences.
-5. A request may take one or more steps. After each action you'll be re-prompted with a short record of what you've already done — pick the NEXT single tool, or emit "done" the moment the user's whole request is satisfied. Never take an action the user didn't ask for, and never repeat a step you already finished.`;
+4. For a SITE tool (one that lists named fields), set args to EXACTLY those fields with the user's values — e.g. { "toolName": "setPreference", "args": { "name": "marketing", "enabled": false } }. Do NOT use args.value for a site tool.
+5. Never invent a tool id. Never wrap the JSON in code fences.
+6. A request may take one or more steps. After each action you'll be re-prompted with a short record of what you've already done — pick the NEXT single tool, or emit "done" the moment the user's whole request is satisfied. Never take an action the user didn't ask for, and never repeat a step you already finished.`;
 }
 
 /** Whether a single executed step cleanly acted — drives the multi-step continue/stop call. */
@@ -255,6 +258,11 @@ function declineText(reason: string, detail?: string): string {
 /** Map an execution outcome to a certainty-ladder report Turn. Only a verified change → Done. */
 export function outcomeToReport(id: string, tool: Tool, tier: RiskTier, outcome: ExecOutcome): Turn {
   if (outcome.kind === 'executed') {
+    // The actor reported an EXPLICIT failure — a clean "that didn't work", NOT "I did that but
+    // can't confirm" (which reads as a maybe-success). No reverse (nothing happened).
+    if (outcome.observed.failed) {
+      return { id, kind: 'report', certainty: 'couldnt', text: `That didn’t work — ${outcome.observed.summary}` };
+    }
     if (outcome.observed.verified) {
       // A reverse is offered ONLY for a MANUFACTURED Tier-0 toggle: re-running it is a genuine
       // DOM inverse. A declared (site) tool has no DOM handle to re-run, and its "now off"
@@ -331,7 +339,12 @@ let turnSeq = 0;
 const turnId = (): string => `loop-${(turnSeq += 1)}`;
 
 function statusFromOutcome(outcome: ExecOutcome): StepStatus {
-  if (outcome.kind === 'executed') return outcome.observed.verified ? 'done' : 'unconfirmed';
+  if (outcome.kind === 'executed') {
+    // An EXPLICIT failure (e.g. a site tool returned {success:false}) stops the loop — never a
+    // blind retry of the same failing call (live bug). Verified → done; otherwise unconfirmed.
+    if (outcome.observed.failed) return 'declined';
+    return outcome.observed.verified ? 'done' : 'unconfirmed';
+  }
   // 'declined' (couldn't act) or the defensive 'located' (a dry-run leaked through) — nothing
   // effectively changed on the page, so multi-step must STOP rather than plan a next step.
   return 'declined';

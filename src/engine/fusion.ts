@@ -36,6 +36,39 @@ export function schemaParamNames(schema: unknown): string[] {
   return Object.keys(props as Record<string, unknown>);
 }
 
+/**
+ * A compact, model-readable description of a site tool's arguments so the loop can fill the
+ * NAMED fields (not a single args.value) — e.g. `name (one of: marketing, security), enabled
+ * (true/false)`. Nano fumbled multi-arg site tools when told only the field names (live bug).
+ */
+export function describeArgs(schema: unknown): string | undefined {
+  if (!schema || typeof schema !== 'object') return undefined;
+  const props = (schema as { properties?: unknown }).properties;
+  if (!props || typeof props !== 'object') return undefined;
+  const required = (schema as { required?: unknown }).required;
+  const req = new Set(Array.isArray(required) ? (required as unknown[]).map(String) : []);
+  // These field/enum strings are SITE-controlled and go into the model's system prompt, so
+  // collapse whitespace + strip control chars + cap length — a crafted enum value can't break
+  // out of its line to forge an instruction (same defence as the declared-tool-id escaping).
+  const clean = (v: unknown): string =>
+    String(v)
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 40);
+  const parts = Object.entries(props as Record<string, unknown>).map(([rawKey, spec]) => {
+    const key = clean(rawKey);
+    const s = (spec ?? {}) as Record<string, unknown>;
+    let hint = key;
+    if (Array.isArray(s.enum)) hint += ` (one of: ${s.enum.slice(0, 12).map(clean).join(', ')})`;
+    else if (s.type === 'boolean') hint += ' (true/false)';
+    else if (typeof s.type === 'string') hint += ` (${clean(s.type)})`;
+    return req.size > 0 && !req.has(rawKey) ? `${hint} [optional]` : hint;
+  });
+  return parts.length > 0 ? parts.slice(0, 12).join(', ') : undefined;
+}
+
 /** Map one site-declared WebMCP tool to a PageAgent Tool. */
 export function declaredToTool(d: DeclaredToolDef): Tool {
   const name = nonEmpty(d.title) ?? d.name;
@@ -57,6 +90,9 @@ export function declaredToTool(d: DeclaredToolDef): Tool {
     provenance: `declared by ${d.origin || 'this site'}`,
   };
   if (params.length > 0) tool.valueLabel = params.join(', ');
+  // A fuller arg spec (types + enums) for the model prompt, so it fills the NAMED fields.
+  const argSchema = describeArgs(d.inputSchema);
+  if (argSchema) tool.argSchema = argSchema;
   return tool;
 }
 
@@ -83,6 +119,9 @@ function looksLikeFailure(v: unknown): boolean {
   if (v === false) return true;
   if (v && typeof v === 'object') {
     const o = v as Record<string, unknown>;
+    // An explicit success signal wins over an ambiguous `error` field, so a search-style tool
+    // returning { success: true, error: 'no match' } reads as success (and doesn't halt a chain).
+    if (o.success === true || o.ok === true || o.isError === false) return false;
     if (o.success === false || o.ok === false || o.isError === true) return true;
     if (typeof o.error === 'string' && o.error.trim() !== '') return true;
   }
@@ -98,19 +137,30 @@ function summarizeResult(v: unknown): string {
   }
 }
 
+/** Pull the site tool's own error text out of a failure return, for a plain report. */
+function failureMessage(v: unknown): string {
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    for (const k of ['error', 'message', 'reason']) {
+      const s = o[k];
+      if (typeof s === 'string' && s.trim() !== '') return s.trim().slice(0, 200);
+    }
+  }
+  return summarizeResult(v);
+}
+
 /**
  * Interpret a site tool's return into an HONEST ObservedChange. We can't observe a site
  * tool's DOM effect, so a return that signals failure ({success:false}, {error}, bare false)
- * is NEVER reported as done — it maps to an unverified "did not complete". Only a clean,
- * non-failure return is `verified` (Step 8.1 / review finding: no overclaim).
+ * is NEVER reported as done — it is flagged `failed` (which reports a clean "that didn't work"
+ * and stops a multi-step loop). Only a clean, non-failure return is `verified` (no overclaim).
  */
 export function interpretDeclaredResult(result: unknown): ObservedChange {
   if (result == null) {
     return { summary: 'the site ran its tool (no result returned).', verified: false };
   }
-  const shown = summarizeResult(result);
   if (looksLikeFailure(result)) {
-    return { summary: `the site reported it did not complete — ${shown}`, verified: false };
+    return { summary: `the site said: ${failureMessage(result)}`, verified: false, failed: true };
   }
-  return { summary: `the site ran its tool and returned: ${shown}`, verified: true };
+  return { summary: `the site ran its tool and returned: ${summarizeResult(result)}`, verified: true };
 }

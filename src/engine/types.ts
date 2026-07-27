@@ -27,6 +27,12 @@ export interface Tool {
   unlabeled?: boolean;
   /** Present for type/choose tools; the value the user supplies. */
   valueLabel?: string;
+  /**
+   * Declared (site) tools only: a compact description of the tool's named arguments (fields +
+   * types + enums) so the on-device loop fills them correctly, e.g. `name (one of: marketing,
+   * security), enabled (true/false)`. Absent for DOM tools (which take a single args.value).
+   */
+  argSchema?: string;
 }
 
 export interface PageInfo {
