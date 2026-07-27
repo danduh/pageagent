@@ -14,6 +14,7 @@ import { interpretDeclaredResult, mergeTools } from './fusion';
 import {
   buildSystemPrompt,
   INTENT_SCHEMA,
+  looksMultiStep,
   outcomeToReport,
   runAgentLoop,
   runSelectedTool,
@@ -450,8 +451,10 @@ export function createLiveEngine(): LiveEngine {
         brain: {
           prompt: (t: string) => brainSession.prompt(t, { responseConstraint: INTENT_SCHEMA }),
         },
-        // Opt into best-effort multi-step (Phase 10.1): re-scan + re-plan between steps.
-        rescan: rescanForLoop,
+        // Best-effort multi-step (Phase 10.1) ONLY when the request clearly asks for more than one
+        // step; a plain single-action request stays single-action so the weak model can't re-plan
+        // into a repeat or a conflicting second action (found live).
+        rescan: looksMultiStep(text) ? rescanForLoop : undefined,
         ...makeToolRunDeps(host, signal, () => `Because you asked: “${text.trim()}”`),
       };
 

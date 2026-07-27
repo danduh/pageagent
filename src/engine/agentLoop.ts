@@ -152,6 +152,17 @@ RULES:
 6. A request may take one or more steps. After each action you'll be re-prompted with a short record of what you've already done — pick the NEXT single tool, or emit "done" the moment the user's whole request is satisfied. Never take an action the user didn't ask for, and never repeat a step you already finished.`;
 }
 
+/**
+ * Cheap, deterministic guess at whether a request asks for MORE THAN ONE step. A single-action
+ * request ("turn off marketing emails") must NOT enter the multi-step loop: a weak on-device
+ * model then re-plans after the one action and either repeats it or fires a SECOND, conflicting
+ * action that cancels the first (found live). Only a clear sequencing cue ("then", ";") opts in;
+ * genuine multi-step requests like "filter to failed jobs, then rerun them" still qualify.
+ */
+export function looksMultiStep(text: string): boolean {
+  return /\b(then|afterwards?|next|finally|followed by)\b/i.test(text) || text.includes(';');
+}
+
 /** Whether a single executed step cleanly acted — drives the multi-step continue/stop call. */
 export type StepStatus = 'done' | 'unconfirmed' | 'declined' | 'cancelled';
 
