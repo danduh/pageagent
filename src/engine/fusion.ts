@@ -47,15 +47,26 @@ export function describeArgs(schema: unknown): string | undefined {
   if (!props || typeof props !== 'object') return undefined;
   const required = (schema as { required?: unknown }).required;
   const req = new Set(Array.isArray(required) ? (required as unknown[]).map(String) : []);
-  const parts = Object.entries(props as Record<string, unknown>).map(([key, spec]) => {
+  // These field/enum strings are SITE-controlled and go into the model's system prompt, so
+  // collapse whitespace + strip control chars + cap length — a crafted enum value can't break
+  // out of its line to forge an instruction (same defence as the declared-tool-id escaping).
+  const clean = (v: unknown): string =>
+    String(v)
+      // eslint-disable-next-line no-control-regex
+      .replace(/[\u0000-\u001f]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 40);
+  const parts = Object.entries(props as Record<string, unknown>).map(([rawKey, spec]) => {
+    const key = clean(rawKey);
     const s = (spec ?? {}) as Record<string, unknown>;
     let hint = key;
-    if (Array.isArray(s.enum)) hint += ` (one of: ${s.enum.map(String).join(', ')})`;
+    if (Array.isArray(s.enum)) hint += ` (one of: ${s.enum.slice(0, 12).map(clean).join(', ')})`;
     else if (s.type === 'boolean') hint += ' (true/false)';
-    else if (typeof s.type === 'string') hint += ` (${s.type})`;
-    return req.size > 0 && !req.has(key) ? `${hint} [optional]` : hint;
+    else if (typeof s.type === 'string') hint += ` (${clean(s.type)})`;
+    return req.size > 0 && !req.has(rawKey) ? `${hint} [optional]` : hint;
   });
-  return parts.length > 0 ? parts.join(', ') : undefined;
+  return parts.length > 0 ? parts.slice(0, 12).join(', ') : undefined;
 }
 
 /** Map one site-declared WebMCP tool to a PageAgent Tool. */
