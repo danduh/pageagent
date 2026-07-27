@@ -75,6 +75,12 @@ export interface ObservedChange {
   verified: boolean;
   /** True when the action navigated / changed the URL. */
   urlChanged?: boolean;
+  /**
+   * True when the actor reported an EXPLICIT failure (e.g. a site WebMCP tool returned
+   * {success:false}/{error}) — distinct from merely unverified. A failure is reported as a
+   * clean "that didn't work" AND stops a multi-step loop (never a blind retry) (live bug).
+   */
+  failed?: boolean;
 }
 
 /**
