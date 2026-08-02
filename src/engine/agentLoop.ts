@@ -10,7 +10,7 @@
 // response to that request (no page-triggered actions exist by construction). We never
 // claim to "detect" an attack — the guarantee is structural, not a classifier.
 
-import type { ActionType, Certainty, RiskTier, Tool } from './types';
+import type { Certainty, RiskTier, Tool } from './types';
 import type { ExecOutcome, ObservedChange } from './scan-types';
 import type { Turn } from './port';
 
@@ -176,7 +176,6 @@ export type StepStatus = 'done' | 'unconfirmed' | 'declined' | 'cancelled';
  */
 export interface StepRecord {
   toolId: string;
-  actionType: ActionType;
   /** The single DOM value, kept for the human-readable prompt line. */
   value?: string;
   /** Canonical JSON of the full args — the repeat-guard key. */
@@ -512,7 +511,7 @@ export async function* runAgentLoop(userText: string, deps: LoopDeps): AsyncIter
     // Same tier → gate → execute → report path the Execute-tab uses; capture the status.
     const status = yield* runSelectedTool(tool, parsed.args, deps);
     if (signal.aborted) return;
-    history.push({ toolId: tool.id, actionType: tool.actionType, value: parsed.value, argsKey: key, status });
+    history.push({ toolId: tool.id, value: parsed.value, argsKey: key, status });
 
     // Stop on anything that didn't cleanly act: a decline means the page isn't as expected (so
     // don't fire more), a cancel means the user vetoed. Its report was already yielded.

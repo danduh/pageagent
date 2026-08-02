@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createStubEngine } from '../engine/stub';
 import { createLiveEngine, isExtensionRuntime, type LiveEngine } from '../engine/live';
 import type { RunHost, Turn } from '../engine/port';
-import type { FreshnessState, GatePreview, LocusState, PageInfo, ScanResult, Tool } from '../engine/types';
+import type { Certainty, FreshnessState, GatePreview, LocusState, PageInfo, ScanResult, Tool } from '../engine/types';
 import { FRESH, nextFreshness, type FreshnessSignal, type FreshnessView } from '../engine/freshness';
 import type { CapabilityState } from '../lib/capabilities';
 import { Button, Tab, Tabs, Toggle } from '../components/primitives';
@@ -141,21 +141,44 @@ export function App() {
     []
   );
 
+  // Append a report turn to the transcript. The id is a unique, stable React key.
+  const addReport = useCallback(
+    (certainty: Certainty, text: string, prefix = 'r') =>
+      setTurns((prev) => [...prev, { id: `${prefix}-${prev.length}`, kind: 'report', certainty, text }]),
+    []
+  );
+
   // When the tool-set is stale, refuse a run PROACTIVELY with an honest reason instead of
   // acting on controls that may have moved — the user re-scans (header re-Scan) and retries.
   const refuseStale = useCallback(() => {
     setTab('chat');
-    setTurns((prev) => [
-      ...prev,
-      {
-        id: `stale-${prev.length}`,
-        kind: 'report',
-        certainty: 'couldnt',
-        text: `${staleReason ?? 'The page changed'} — Scan this page again, then try.`,
-      },
-    ]);
+    addReport('couldnt', `${staleReason ?? 'The page changed'} — Scan this page again, then try.`, 'stale');
     inputRef.current?.focus();
-  }, [staleReason]);
+  }, [staleReason, addReport]);
+
+  // Drive one live run: own the AbortController, stream its turns into the transcript, and
+  // clear the working state when it ends (unless Stop already did). The single place that owns
+  // the acting/status/abort lifecycle, so send/runTool/reverse each stay one call.
+  const startRun = useCallback((make: (signal: AbortSignal) => AsyncIterable<Turn>) => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setActing(true);
+    setStatus('Working on your device…');
+    void (async () => {
+      try {
+        for await (const turn of make(controller.signal)) {
+          if (controller.signal.aborted) break;
+          setTurns((prev) => [...prev, turn]);
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setActing(false);
+          setStatus('');
+        }
+        inputRef.current?.focus();
+      }
+    })();
+  }, []);
 
   const send = useCallback(
     (text: string) => {
@@ -178,41 +201,16 @@ export function App() {
           return;
         }
       }
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setActing(true);
-      setStatus('Working on your device…');
-      void (async () => {
-        try {
-          for await (const turn of engine.runIntent(trimmed, controller.signal, host)) {
-            if (controller.signal.aborted) break;
-            setTurns((prev) => [...prev, turn]);
-          }
-        } finally {
-          if (!controller.signal.aborted) {
-            setActing(false);
-            setStatus('');
-          }
-          inputRef.current?.focus();
-        }
-      })();
+      startRun((signal) => engine.runIntent(trimmed, signal, host));
     },
-    [acting, engine, pendingGate, live, host, toolsStale, refuseStale]
+    [acting, engine, pendingGate, live, host, toolsStale, refuseStale, startRun]
   );
 
   const rescan = useCallback(() => {
     // A run owns the page — re-scanning would be refused and misread as a failure; ask the user
     // to Stop first instead of falsely marking the (still-valid) tool-set stale (review finding).
     if (acting) {
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: `busy-${prev.length}`,
-          kind: 'report',
-          certainty: 'couldnt',
-          text: 'I’m in the middle of an action — Stop it first, then Scan.',
-        },
-      ]);
+      addReport('couldnt', 'I’m in the middle of an action — Stop it first, then Scan.', 'busy');
       return;
     }
     // Reset wrong-tab at scan START: we bind to the tab we're on now, so a switch that happens
@@ -224,7 +222,7 @@ export function App() {
       setScanResult(res);
       signalFreshness({ kind: res.status === 'failed' ? 'scan-failed' : 'scanned' });
     });
-  }, [engine, signalFreshness, acting]);
+  }, [engine, signalFreshness, acting, addReport]);
 
   // Execute: run one tool by hand. Destructive (risk ≥ 1) routes through the gate;
   // a reversible tool flows and reports. The report lands in the transcript (traceable).
@@ -241,24 +239,7 @@ export function App() {
       // WebMCP tool is invoked via the site's handler).
       if (live && 'runTool' in engine) {
         setTab('chat');
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setActing(true);
-        setStatus('Working on your device…');
-        void (async () => {
-          try {
-            for await (const turn of (engine as LiveEngine).runTool(tool, value, host, controller.signal)) {
-              if (controller.signal.aborted) break;
-              setTurns((prev) => [...prev, turn]);
-            }
-          } finally {
-            if (!controller.signal.aborted) {
-              setActing(false);
-              setStatus('');
-            }
-            inputRef.current?.focus();
-          }
-        })();
+        startRun((signal) => (engine as LiveEngine).runTool(tool, value, host, signal));
         return;
       }
       // Stub path (tests + gallery): scripted gate/report.
@@ -267,17 +248,9 @@ export function App() {
         return;
       }
       setTab('chat');
-      setTurns((prev) => [
-        ...prev,
-        {
-          id: `x-${prev.length}`,
-          kind: 'report',
-          certainty: 'done',
-          text: `Done — ran "${tool.name}"${value ? ` with "${value}"` : ''}.`,
-        },
-      ]);
+      addReport('done', `Done — ran "${tool.name}"${value ? ` with "${value}"` : ''}.`, 'x');
     },
-    [pendingGate, acting, live, engine, host, toolsStale, refuseStale]
+    [pendingGate, acting, live, engine, host, toolsStale, refuseStale, startRun, addReport]
   );
 
   const reverse = useCallback(
@@ -289,24 +262,7 @@ export function App() {
       if (acting || pendingGate) return;
       // Live: re-run the inverse of THIS turn's action through the real execute pipeline.
       if (live && 'reverseAction' in engine) {
-        const controller = new AbortController();
-        abortRef.current = controller;
-        setActing(true);
-        setStatus('Working on your device…');
-        void (async () => {
-          try {
-            for await (const turn of (engine as LiveEngine).reverseAction(turnId, controller.signal)) {
-              if (controller.signal.aborted) break;
-              setTurns((prev) => [...prev, turn]);
-            }
-          } finally {
-            if (!controller.signal.aborted) {
-              setActing(false);
-              setStatus('');
-            }
-            inputRef.current?.focus();
-          }
-        })();
+        startRun((signal) => (engine as LiveEngine).reverseAction(turnId, signal));
         return;
       }
       setTurns((prev) => [
@@ -319,7 +275,7 @@ export function App() {
         },
       ]);
     },
-    [live, engine, acting, pendingGate]
+    [live, engine, acting, pendingGate, startRun]
   );
 
   const choice = useCallback((picked: string) => send(picked), [send]);
@@ -359,17 +315,9 @@ export function App() {
     }
     // Stub: scripted "didn't" report.
     setPendingGate(null);
-    setTurns((prev) => [
-      ...prev,
-      {
-        id: `gx-${prev.length}`,
-        kind: 'report',
-        certainty: 'didnt',
-        text: 'You stopped it — I didn’t do anything.',
-      },
-    ]);
+    addReport('didnt', 'You stopped it — I didn’t do anything.', 'gx');
     inputRef.current?.focus();
-  }, [resolveGate]);
+  }, [resolveGate, addReport]);
 
   // Cloud fallback: an explicit, per-use opt-in. It flips the locus off-device.
   const useCloudOnce = useCallback(() => {

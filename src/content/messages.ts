@@ -115,12 +115,6 @@ export type ExecuteDeclaredResponse =
   | { ok: true; result: unknown }
   | { ok: false; reason: string };
 
-export type ContentResponse =
-  | ScanResponse
-  | PageInfoResponse
-  | ExecuteResponse
-  | ExecuteDeclaredResponse;
-
 export function isPanelToContent(v: unknown): v is PanelToContent {
   return (
     typeof v === 'object' &&
