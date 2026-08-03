@@ -39,6 +39,12 @@ import {
   type PanelToContent,
   type ScanResponse,
 } from '../content/messages';
+import { selectToolsForRequest } from './retrieval';
+
+/** One friendly, consistent line for when the on-device model can't run — it names what still
+ *  works (Step 10.2 graceful degradation). Never leak a raw browser error string to the user. */
+const MODEL_NOT_READY =
+  "The on-device AI isn't ready right now — you can still browse the Tools tab, run a control by hand, and inspect the Scan.";
 
 /** A minimal view of the on-device model session we depend on. */
 interface LanguageSession {
@@ -289,6 +295,11 @@ export function createLiveEngine(): LiveEngine {
     if (tools.length === 0) return new Map();
     const lm = getLanguageModel();
     if (!lm) return null;
+    // A scan is passive: only classify when the model is actually READY. Without this, a browser
+    // where the model is present-but-unavailable would fire a doomed lm.create() on EVERY scan
+    // (wasteful, and it could hang instead of rejecting). availability() never downloads (8.3b/10.2).
+    const { languageModel } = await detectLanguageModel();
+    if (languageModel !== 'available') return null;
     let s: LanguageSession | null = null;
     try {
       s = await lm.create({
@@ -380,7 +391,7 @@ export function createLiveEngine(): LiveEngine {
   // model session against the FRESH tool-set, and hand the loop a brain bound to it. On a
   // failed/empty scan (or a model that won't wake) it hands back honestly instead — the loop
   // stops rather than plan against a stale or empty page.
-  async function rescanForLoop(signal: AbortSignal): Promise<RescanResult> {
+  async function rescanForLoop(signal: AbortSignal, request: string): Promise<RescanResult> {
     // Keep the run scoped to the tab it started on; the re-scan classifies fresh (so a control
     // that changed/navigated mid-loop is judged for the current page, not a stale prior verdict).
     const res = await doScan(signal, { rebind: false });
@@ -395,16 +406,27 @@ export function createLiveEngine(): LiveEngine {
         handBack: { certainty: 'couldnt', text: 'After re-scanning I found no tools on this page, so I stopped.' },
       };
     }
-    let brainSession: LanguageSession;
-    try {
-      brainSession = await ensureSession(cachedTools);
-    } catch (e) {
+    // Apply the SAME keyword narrowing as step 0 (Step 10.2) so a dense page doesn't silently
+    // re-widen to all N tools between steps. Mid-run we proceed with the capped candidate set
+    // (best effort) and only stop if nothing on the fresh page matches the original request.
+    const selection = selectToolsForRequest(cachedTools, request);
+    if (!selection.passedThrough && selection.matched === 0) {
       return {
-        handBack: { certainty: 'couldnt', text: `The on-device model isn't ready to continue: ${(e as Error).message}` },
+        handBack: {
+          certainty: 'couldnt',
+          text: `After re-scanning, no control matched “${request.trim()}”, so I stopped.`,
+        },
       };
     }
+    const loopTools = selection.tools;
+    let brainSession: LanguageSession;
+    try {
+      brainSession = await ensureSession(loopTools);
+    } catch {
+      return { handBack: { certainty: 'couldnt', text: MODEL_NOT_READY } };
+    }
     return {
-      tools: cachedTools,
+      tools: loopTools,
       brain: { prompt: (t: string) => brainSession.prompt(t, { responseConstraint: INTENT_SCHEMA }) },
     };
   }
@@ -465,8 +487,8 @@ export function createLiveEngine(): LiveEngine {
 
     async *runIntent(text: string, signal: AbortSignal, host: RunHost): AsyncIterable<Turn> {
       if (signal.aborted) return;
-      const tools = cachedTools;
-      if (tools.length === 0) {
+      const allTools = cachedTools;
+      if (allTools.length === 0) {
         yield {
           id: nextTurnId(),
           kind: 'agent',
@@ -475,15 +497,40 @@ export function createLiveEngine(): LiveEngine {
         return;
       }
 
-      let brainSession: LanguageSession;
-      try {
-        brainSession = await ensureSession(tools);
-      } catch (e) {
+      // Retrieval fallback (Step 10.2): a small page passes through unchanged (single-action
+      // reliability preserved); a DENSE page hands the weak model only the tools whose words
+      // match the request. If a dense page matches nothing — or too many — hand back honestly
+      // instead of flooding the model with 100 tools. The user can always browse the full set.
+      const selection = selectToolsForRequest(allTools, text);
+      if (!selection.passedThrough && selection.matched === 0) {
         yield {
           id: nextTurnId(),
           kind: 'report',
           certainty: 'couldnt',
-          text: `The on-device model isn't ready: ${(e as Error).message}`,
+          text: `This page has ${selection.total} controls and none matched “${text.trim()}”. Try different words, or open the Tools tab to browse them all.`,
+        };
+        return;
+      }
+      if (!selection.passedThrough && selection.tooMany) {
+        yield {
+          id: nextTurnId(),
+          kind: 'report',
+          certainty: 'couldnt',
+          text: `“${text.trim()}” matches ${selection.matched} of ${selection.total} controls on this busy page — too many to pick from reliably. Narrow it (name the specific control), or open the Tools tab to run one directly.`,
+        };
+        return;
+      }
+      const tools = selection.tools;
+
+      let brainSession: LanguageSession;
+      try {
+        brainSession = await ensureSession(tools);
+      } catch {
+        yield {
+          id: nextTurnId(),
+          kind: 'report',
+          certainty: 'couldnt',
+          text: MODEL_NOT_READY,
         };
         return;
       }
@@ -497,7 +544,7 @@ export function createLiveEngine(): LiveEngine {
         // Best-effort multi-step (Phase 10.1) ONLY when the request clearly asks for more than one
         // step; a plain single-action request stays single-action so the weak model can't re-plan
         // into a repeat or a conflicting second action (found live).
-        rescan: looksMultiStep(text) ? rescanForLoop : undefined,
+        rescan: looksMultiStep(text) ? (s) => rescanForLoop(s, text) : undefined,
         ...makeToolRunDeps(host, signal, () => `Because you asked: “${text.trim()}”`),
       };
 
