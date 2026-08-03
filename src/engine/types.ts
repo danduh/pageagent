@@ -56,18 +56,6 @@ export type ScanResult =
   | { status: 'partial'; tools: Tool[]; coverage: Coverage; note: string }
   | { status: 'failed'; reason: string };
 
-/**
- * Element re-resolution outcome (Spike B). A BOOLEAN would be a lie: the reorder
- * case produced WRONG-NODE hits, so "found" must distinguish a verified match from
- * an ambiguous or stale one. not-found + ambiguous both map to a "couldn't" report;
- * ambiguous is a first-class DECLINE for destructive actions (locate-or-decline).
- */
-export type ReResolution =
-  | { kind: 'resolved-verified'; toolId: string }
-  | { kind: 'not-found' }
-  | { kind: 'ambiguous'; matches: number }
-  | { kind: 'stale' };
-
 /** Certainty ladder — what a report-back is allowed to claim (Plan §11). */
 export type Certainty = 'done' | 'sent-unconfirmed' | 'couldnt' | 'didnt';
 

@@ -12,6 +12,13 @@ import type { DeclaredToolDef, ElementFingerprint, ExecOutcome } from './scan-ty
 import { generateTools } from './toolgen';
 import { interpretDeclaredResult, mergeTools } from './fusion';
 import {
+  buildRiskPrompt,
+  decideRisk,
+  parseRiskClassification,
+  RISK_SCHEMA,
+  type AiRisk,
+} from '../safety/classifier';
+import {
   buildSystemPrompt,
   INTENT_SCHEMA,
   looksMultiStep,
@@ -274,6 +281,30 @@ export function createLiveEngine(): LiveEngine {
     return session;
   }
 
+  // Hybrid risk classification (Step 8.3b): ask the on-device model to tier every scanned tool,
+  // in its OWN short-lived session (no system prompt, so it never mixes with the intent loop).
+  // Returns null when there's no model OR the call fails — the caller then keeps the
+  // deterministic keyword floor (graceful degradation, never a blocked scan).
+  async function classifyRisksWithAi(tools: Tool[]): Promise<Map<string, AiRisk> | null> {
+    if (tools.length === 0) return new Map();
+    const lm = getLanguageModel();
+    if (!lm) return null;
+    let s: LanguageSession | null = null;
+    try {
+      s = await lm.create({
+        expectedInputs: [{ type: 'text', languages: ['en'] }],
+        expectedOutputs: [{ type: 'text', languages: ['en'] }],
+      });
+      const { prompt, tokenToId } = buildRiskPrompt(tools);
+      const raw = await s.prompt(prompt, { responseConstraint: RISK_SCHEMA });
+      return parseRiskClassification(raw, tokenToId);
+    } catch {
+      return null;
+    } finally {
+      s?.destroy?.();
+    }
+  }
+
   // The one real scan: refresh cachedTools + idToHandle, invalidate the stale session. Shared
   // by the public `scan` (user re-Scan → rebind to the active tab) and the loop's between-step
   // re-scan (Phase 10.1 → rebind:false, so it re-scans the SAME tab the run is scoped to even
@@ -318,6 +349,17 @@ export function createLiveEngine(): LiveEngine {
       });
       // Fuse with the site's declared WebMCP tools (Step 8.1): declared win on overlap.
       cachedTools = mergeTools(manufactured, cachedDeclared);
+      // AI-primary risk (Step 8.3b): classify EVERY scanned control fresh — including the loop's
+      // between-step re-scan — so a control that navigated or changed is judged for THIS page, never
+      // via a stale prior-page verdict (review finding). A confident verdict is trusted; otherwise
+      // (unsure / a control the model skipped / no model) the deterministic keyword flow decides
+      // (decideRisk). No model / failure → the deterministic flow for every control (graceful).
+      if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
+      const aiRisks = await classifyRisksWithAi(cachedTools);
+      if (signal?.aborted) return { status: 'failed', reason: 'Scan stopped.' };
+      if (aiRisks) {
+        cachedTools = cachedTools.map((t) => ({ ...t, risk: decideRisk(t.risk, aiRisks.get(t.id)) }));
+      }
       // The tool-set changed → the model's system prompt is stale.
       session?.destroy?.();
       session = null;
@@ -339,7 +381,8 @@ export function createLiveEngine(): LiveEngine {
   // failed/empty scan (or a model that won't wake) it hands back honestly instead — the loop
   // stops rather than plan against a stale or empty page.
   async function rescanForLoop(signal: AbortSignal): Promise<RescanResult> {
-    // Keep the run scoped to the tab it started on — never hop to a tab the user switched to.
+    // Keep the run scoped to the tab it started on; the re-scan classifies fresh (so a control
+    // that changed/navigated mid-loop is judged for the current page, not a stale prior verdict).
     const res = await doScan(signal, { rebind: false });
     if (signal.aborted) {
       return { handBack: { certainty: 'didnt', text: 'You stopped it — I didn’t do anything more.' } };
